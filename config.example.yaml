@@ -19,13 +19,14 @@ agents:
   write:
     model: anthropic:claude-opus-4-8         # escreve SKILL.md + arquivos referenciados
   judge:
-    model: google-gla:gemini-2.0-flash       # avalia a skill (LLM != Write → menos viés)
+    model: anthropic:claude-sonnet-4.6      # avalia a skill (LLM != Write → menos viés)
 
 # -----------------------------------------------------------------------------
 # 2. Objetivo da SKILL + saída + best practices herdadas.
 # -----------------------------------------------------------------------------
 skill:
-  objetivo: "Criar uma skill que ensine Claude a revisar PRs de Python seguindo os padrões da Asaas"
+  objetivo: "Crie uma SKILL com objetivo de montar uma pipeline de extração dos dados do confluence e Jira, adaptando e 
+  convertendo para o formato de schema do SpineRecord conforme documentações e links de referencia" 
   output_dir: "./skills"                      # onde a SKILL final é gravada (diretório SKILL.md + refs)
   best_practices: "./skills/asaas-base/SKILL.md"  # SKILL com regras Asaas; injetada como contexto
                                                   # herdado em TODOS os agentes E pontuada pelo Judge.
@@ -82,5 +83,29 @@ scoring:
 #             Links que falharem (rede/404) são ignorados (segue sem eles).
 # -----------------------------------------------------------------------------
 contexto:
-  docs: []     # ex: ["./docs/arquitetura", "./referencias/guia.md"]
+  docs: ["./docs"]     # ex: ["./docs/arquitetura", "./referencias/guia.md"]
   links: []    # ex: ["https://docs.python.org/3/library/asyncio.html"]
+
+# -----------------------------------------------------------------------------
+# 6. MCP (opcional) — dá aos agentes tools de servidores MCP que eles podem
+#    chamar AUTONOMAMENTE durante a execução (ex: Confluence, Jira, ou qualquer
+#    outro que você tenha habilitado).
+#
+#    config_path -> JSON no formato `mcpServers` (o MESMO do Claude Desktop /
+#                   Cursor / Claude Code). Suporta ${VAR} e ${VAR:-default}.
+#                   null/omitido => nenhum MCP (comportamento padrão).
+#    agentes     -> quais nós recebem as tools. Default: discovery/plan/write
+#                   (o Judge fica sem tools p/ avaliar sem viés).
+#
+#    Exemplo de arquivo .mcp.json:
+#      {
+#        "mcpServers": {
+#          "confluence": {"command": "npx", "args": ["-y", "mcp-confluence"],
+#                          "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}},
+#          "jira":       {"command": "npx", "args": ["-y", "mcp-jira"]}
+#        }
+#      }
+# -----------------------------------------------------------------------------
+mcp:
+  config_path: null                 # ex: "./.mcp.json"
+  agentes: [discovery, plan, write] # subconjunto de discovery/plan/write/judge

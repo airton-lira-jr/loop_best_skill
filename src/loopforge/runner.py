@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from loopforge.agents.builder import AgentsBundle, build_agents
 from loopforge.config import load_config
 from loopforge.context import build_contexto
 from loopforge.graph import build_graph
@@ -14,6 +16,29 @@ from loopforge.persistence import gravar_skill
 from loopforge.state import Contexto, LoopState
 
 log = get_logger("runner")
+
+
+async def _rodar_grafo(graph, estado_inicial: LoopState, agents: AgentsBundle, usa_mcp: bool):
+    """Roda o grafo, abrindo as conexões MCP dos agentes quando necessário.
+
+    Args:
+        graph: grafo compilado.
+        estado_inicial: estado inicial do loop.
+        agents: bundle de agentes (entrado como context manager se houver MCP).
+        usa_mcp: se True, entra em cada agente (``async with``) para conectar as
+            toolsets MCP antes de rodar e fechá-las ao final.
+
+    Returns:
+        Estado bruto (dict) devolvido por ``graph.ainvoke``.
+    """
+    invoke_cfg = {"configurable": {"thread_id": "run"}}
+    if not usa_mcp:
+        return await graph.ainvoke(estado_inicial, config=invoke_cfg)
+
+    async with AsyncExitStack() as stack:
+        for ag in agents.itens():
+            await stack.enter_async_context(ag)
+        return await graph.ainvoke(estado_inicial, config=invoke_cfg)
 
 
 async def run_loop(
@@ -45,11 +70,12 @@ async def run_loop(
         objetivo=config.skill.objetivo, contexto=contexto, config=config
     )
 
+    agents = build_agents(config)
+    usa_mcp = config.mcp.config_path is not None
+
     with SqliteSaver.from_conn_string(str(runs_dir / "loopforge.sqlite")) as checkpointer:
-        graph = build_graph(config, checkpointer=checkpointer)
-        bruto = await graph.ainvoke(
-            estado_inicial, config={"configurable": {"thread_id": "run"}}
-        )
+        graph = build_graph(config, agents=agents, checkpointer=checkpointer)
+        bruto = await _rodar_grafo(graph, estado_inicial, agents, usa_mcp)
 
     final = LoopState.model_validate(bruto)
     if final.artifact is not None:

@@ -69,3 +69,30 @@ def test_judge_que_nao_soma_um_falha(tmp_path):
             scoring:
               judge: {alinhamento_objetivo: 0.9}
         """))
+
+
+def test_mcp_defaults_e_best_practices_opcional(tmp_path):
+    cfg = load_config(_write(tmp_path, """
+        agents:
+          discovery: {model: google-gla:gemini-2.0-flash}
+          plan:      {model: anthropic:claude-opus-4-8}
+          write:     {model: anthropic:claude-opus-4-8}
+          judge:     {model: google-gla:gemini-2.0-flash}
+        skill: {objetivo: "x"}
+    """))
+    assert cfg.skill.best_practices is None          # best_practices é opcional
+    assert cfg.mcp.config_path is None               # sem MCP por default
+    assert cfg.mcp.agentes == ["discovery", "plan", "write"]
+
+
+def test_mcp_agente_invalido_falha(tmp_path):
+    with pytest.raises(ValidationError):
+        load_config(_write(tmp_path, """
+            agents:
+              discovery: {model: google-gla:gemini-2.0-flash}
+              plan:      {model: anthropic:claude-opus-4-8}
+              write:     {model: anthropic:claude-opus-4-8}
+              judge:     {model: google-gla:gemini-2.0-flash}
+            skill: {objetivo: "x"}
+            mcp: {config_path: "./m.json", agentes: ["discovery", "xpto"]}
+        """))

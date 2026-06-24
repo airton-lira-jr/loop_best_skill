@@ -80,14 +80,17 @@ Veja [`config.example.yaml`](./config.example.yaml) — todos os campos são com
 - `agents.{discovery,plan,write,judge}.model` — LLM de cada nó (formato `provider:modelo`).
 - `skill.objetivo` — o alvo que o loop deve atingir.
 - `skill.output_dir` — onde a SKILL final é gravada.
-- `skill.best_practices` — **path para uma SKILL** com as regras da Asaas. É **injetada como contexto
-  herdado** em todos os agentes **e** pontuada pelo Judge (dimensão `aderencia_best_practices`).
+- `skill.best_practices` — **opcional**. Path para uma SKILL com as regras da Asaas. É **injetada como
+  contexto herdado** em todos os agentes **e** pontuada pelo Judge (dimensão `aderencia_best_practices`).
+  `null`/omitido (ou arquivo ausente) ⇒ a dimensão é dropada e os pesos do Judge são renormalizados.
 - `loop.max_iteracoes` — teto duro de iterações.
 - `loop.score_minimo` — threshold de aprovação (0.0–1.0).
 - `loop.no_progress_paciencia` — para se o score não melhora por N iterações.
 - `scoring.*` — pesos da métrica (detalhado abaixo).
 - `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
   lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
+- `mcp.{config_path,agentes}` — **opcional**. Servidores MCP que os agentes podem chamar ao vivo
+  (Confluence, Jira, etc.) — detalhe na seção "MCP" abaixo.
 
 ---
 
@@ -140,6 +143,52 @@ Ou seja: para um arquivo de referência **influenciar de verdade** o Discovery/P
 No diretório `skill.output_dir` (default `./skills`), dentro de uma subpasta com o nome da skill em
 slug. Ex.: `./skills/pr-review/SKILL.md` + os arquivos referenciados. Os runs (memory spine / SQLite)
 ficam em `.loopforge/runs/` (ignorado pelo git).
+
+---
+
+## MCP — tools que os agentes usam ao vivo (Confluence, Jira, ...)
+
+Diferente de `contexto.links` (que baixa um snapshot estático), o MCP dá aos agentes **tools que eles
+chamam sozinhos durante a execução**, quando julgam necessário. Útil quando o material muda ou exige
+consulta dinâmica (buscar uma página do Confluence, ler um ticket do Jira, etc.).
+
+### Como ligar
+
+1. Tenha um JSON no formato `mcpServers` (o **mesmo** do Claude Desktop / Cursor / Claude Code). Ex.
+   `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "confluence": {
+      "command": "npx", "args": ["-y", "mcp-confluence"],
+      "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}
+    },
+    "jira": { "command": "npx", "args": ["-y", "mcp-jira"] }
+  }
+}
+```
+
+2. Aponte o YAML para ele:
+
+```yaml
+mcp:
+  config_path: "./.mcp.json"
+  agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
+```
+
+### Como funciona
+
+- Cada server vira uma toolset **prefixada pelo nome** (`confluence_*`, `jira_*`) — sem colisão entre
+  servers.
+- Variáveis de ambiente no JSON: `${VAR}` (obrigatória) ou `${VAR:-default}`.
+- Os agentes em `mcp.agentes` recebem as tools e **decidem em runtime** quando chamá-las. O **Judge
+  fica de fora por padrão** (avalia a skill sem viés de ferramenta).
+- As conexões MCP são abertas no início do run e fechadas no fim (gerenciadas pelo runner).
+- Sem `mcp.config_path`, nada muda — nenhum agente recebe tools.
+
+> Reaproveite os servers que você **já tem habilitados** no Claude Code: aponte `config_path` para o
+> mesmo JSON de `mcpServers`.
 
 ---
 

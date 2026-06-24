@@ -107,8 +107,12 @@ scoring:                    # pesos opcionais (cada grupo deve somar 1.0)
     aderencia_best_practices: 0.15
 
 contexto:                   # opcional; também passável via flags da CLI
-  docs: []                  # lista de diretórios de documentação
-  links: []                 # lista de URLs
+  docs: []                  # arquivos/diretórios; o conteúdo é lido e injetado
+  links: []                 # URLs; o corpo é baixado (httpx) e injetado
+
+mcp:                        # opcional; tools MCP que os agentes chamam ao vivo
+  config_path: null         # JSON formato `mcpServers` (Claude Desktop/Cursor/Claude Code)
+  agentes: [discovery, plan, write]  # nós que recebem as tools (Judge fora por padrão)
 ```
 
 > **Anti-viés (default):** `agents.judge.model` deve usar um provider **≠** `agents.write.model`,
@@ -116,9 +120,10 @@ contexto:                   # opcional; também passável via flags da CLI
 > `write`, `judge`.
 
 Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`,
-`skill.output_dir`, `skill.best_practices`, `loop.max_iteracoes`, `loop.score_minimo`,
+`skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
-`scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`.
+`scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
+`mcp.config_path` (opcional), `mcp.agentes`.
 
 > A validação de pesos é estrita: `scoring.pesos`, `scoring.deterministico` (5 checks) e
 > `scoring.judge` (5 dimensões) **cada grupo deve somar 1.0**, senão o load levanta `ValidationError`.
@@ -137,8 +142,13 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
   A camada determinística roda checks programáticos sobre o `SkillArtifact`; a camada judge é a rubrica
   do Judge (saída tipada `JudgeVerdict`). Sem `best_practices`, a dimensão `aderencia_best_practices` é
   dropada e os pesos do judge são renormalizados.
-- **best_practices como contexto herdado** — quando `skill.best_practices` aponta p/ uma SKILL, seu
-  conteúdo é injetado nos prompts de todos os agentes **e** pontuado pelo Judge.
+- **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/ uma
+  SKILL, seu conteúdo é injetado nos prompts de todos os agentes **e** pontuado pelo Judge. Ausente
+  (null/omitido/arquivo inexistente) ⇒ a dimensão `aderencia_best_practices` é dropada e renormalizada.
+- **MCP autônomo (opcional)** — com `mcp.config_path` (JSON `mcpServers` padrão), os agentes em
+  `mcp.agentes` recebem toolsets MCP via `load_mcp_toolsets` e as chamam em runtime quando precisam
+  (Confluence/Jira/etc.). O runner abre/fecha as conexões em volta do `ainvoke` (`async with agent`).
+  Judge fica sem tools por padrão. Carga é preguiçosa (não conecta em teste).
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate-os como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b) é

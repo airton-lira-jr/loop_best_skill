@@ -97,6 +97,32 @@ class ContextoCfg(BaseModel):
     links: list[str] = Field(default_factory=list)
 
 
+_AGENTES_VALIDOS = {"discovery", "plan", "write", "judge"}
+
+
+class McpCfg(BaseModel):
+    """Configuração de servidores MCP disponibilizados como tools aos agentes.
+
+    ``config_path`` aponta para um JSON no formato ``mcpServers`` (o mesmo do
+    Claude Desktop/Cursor/Claude Code); cada server vira uma toolset prefixada
+    pelo nome do server. ``agentes`` define quais nós recebem essas tools (o
+    Judge fica de fora por padrão para avaliar sem viés de ferramenta).
+    """
+
+    config_path: str | None = None
+    agentes: list[str] = Field(default_factory=lambda: ["discovery", "plan", "write"])
+
+    @model_validator(mode="after")
+    def _checa(self) -> McpCfg:
+        invalidos = sorted(set(self.agentes) - _AGENTES_VALIDOS)
+        if invalidos:
+            raise ValueError(
+                f"mcp.agentes inválidos: {invalidos}. Use um subconjunto de "
+                f"{sorted(_AGENTES_VALIDOS)}."
+            )
+        return self
+
+
 class AppConfig(BaseModel):
     """Root configuration schema for loopforge application."""
     agents: AgentsCfg
@@ -104,6 +130,7 @@ class AppConfig(BaseModel):
     loop: LoopCfg = Field(default_factory=LoopCfg)
     scoring: ScoringCfg = Field(default_factory=ScoringCfg)
     contexto: ContextoCfg = Field(default_factory=ContextoCfg)
+    mcp: McpCfg = Field(default_factory=McpCfg)
 
 
 def load_config(path: str | Path) -> AppConfig:

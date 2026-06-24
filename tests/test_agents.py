@@ -48,3 +48,32 @@ async def test_write_e_judge_produzem_tipos():
         j = await bundle.judge.run("avalie")
     assert isinstance(w.output, SkillArtifact)
     assert isinstance(j.output, JudgeVerdict)
+
+
+def test_sem_mcp_nenhum_agente_tem_toolset():
+    """Sem mcp.config_path, nenhum agente recebe toolsets de usuário."""
+    bundle = build_agents(CFG)
+    assert bundle.discovery._user_toolsets == []
+    assert bundle.judge._user_toolsets == []
+
+
+def test_mcp_toolsets_so_nos_agentes_configurados(tmp_path):
+    """Com mcp.config_path, só os agentes em mcp.agentes ganham as toolsets."""
+    mcp_json = tmp_path / "mcp.json"
+    mcp_json.write_text(
+        '{"mcpServers": {"dummy": {"command": "x", "args": []}}}', encoding="utf-8"
+    )
+    cfg = AppConfig.model_validate({
+        "agents": {
+            "discovery": {"model": "google-gla:gemini-2.0-flash"},
+            "plan": {"model": "anthropic:claude-opus-4-8"},
+            "write": {"model": "anthropic:claude-opus-4-8"},
+            "judge": {"model": "google-gla:gemini-2.0-flash"},
+        },
+        "skill": {"objetivo": "x"},
+        "mcp": {"config_path": str(mcp_json), "agentes": ["discovery"]},
+    })
+    bundle = build_agents(cfg)
+    assert len(bundle.discovery._user_toolsets) == 1   # dummy server
+    assert bundle.plan._user_toolsets == []             # fora de mcp.agentes
+    assert bundle.judge._user_toolsets == []
