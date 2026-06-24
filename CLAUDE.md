@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Status do repositório:** projeto em estágio inicial (greenfield). Este documento descreve a
-> arquitetura-alvo e as convenções acordadas. Ao implementar, mantenha este arquivo sincronizado
-> com a estrutura real conforme o código for surgindo.
+> **Status do repositório:** implementado (tasks 1-13 do plano em `docs/superpowers/plans/`). A CLI
+> `loopforge run`/`validate`, o grafo LangGraph de 4 nós, o scoring híbrido e a suíte de testes já
+> existem. Mantenha este arquivo sincronizado com a estrutura real ao evoluir o código.
 
 ## Propósito
 
@@ -19,28 +19,32 @@ definido pelo usuário.
 Objetivo do usuário (YAML)
         │
         ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  DISCOVERY   │───▶│     PLAN     │───▶│  VALIDAÇÃO   │
-│ (LLM A)      │    │ (LLM B)      │    │ (LLM C)      │
-│ levanta      │    │ elabora      │    │ julga se a   │
-│ soluções,    │    │ plano de     │    │ SKILL atinge │
-│ tecnologias, │    │ execução     │    │ o objetivo   │
-│ estratégias  │    │              │    │              │
-└──────────────┘    └──────────────┘    └──────┬───────┘
-        ▲                                       │
-        │         reprovado (abaixo do          │
-        └───────── threshold de métrica) ───────┤
-                                                │ aprovado
-                                                ▼
-                                          SKILL final
+┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐
+│ DISCOVERY │──▶│   PLAN    │──▶│   WRITE   │──▶│   JUDGE   │
+│ (LLM A)   │   │ (LLM B)   │   │ (LLM C)   │   │ (LLM D)   │
+│ levanta   │   │ elabora a │   │ escreve a │   │ pontua a  │
+│ soluções  │   │ spec da   │   │ SKILL.md  │   │ SKILL por │
+│ e techs   │   │ SKILL     │   │ + refs    │   │ rubrica   │
+└───────────┘   └───────────┘   └───────────┘   └─────┬─────┘
+        ▲                                              │
+        │      reprovado (score < score_minimo)        │
+        │      e iter < max_iteracoes (com feedback)   │
+        └──────────────── reitera ─────────────────────┤
+                                                        │ aprovado / para
+                                                        ▼
+                                                  SKILL final
 ```
 
 - **Discovery Agent** — faz *discovery* de soluções tecnológicas, melhores caminhos e estratégias.
-- **Plan Agent** — elabora o plano de execução com base no discovery.
-- **Validation/Judge Agent** — avalia se o plano está coerente com o objetivo e **julga** se a
-  SKILL devolvida está de acordo e vai atingir o objetivo definido pelo usuário.
-- O loop **reitera** enquanto a métrica de avaliação ficar abaixo do threshold, respeitando um
-  **limite máximo de iterações** (proteção contra loop infinito).
+  Roda só na 1ª iteração.
+- **Plan Agent** — elabora a spec da SKILL (`SkillPlan`) com base no discovery. É o nó que itera,
+  incorporando o feedback do Judge.
+- **Write Agent** — escreve o `SKILL.md` (frontmatter + corpo) e os arquivos referenciados
+  (`SkillArtifact`) a partir da spec.
+- **Judge Agent** — avalia o artefato e produz um veredito estruturado (`JudgeVerdict`): nota 0..1 por
+  dimensão + feedback acionável. É essa métrica que alimenta a decisão de loop.
+- O loop **reitera** enquanto o score ficar abaixo do `score_minimo`, respeitando o teto
+  `max_iteracoes` e a paciência anti-estagnação (`no_progress_paciencia`).
 
 ## Stack
 
@@ -48,68 +52,105 @@ Objetivo do usuário (YAML)
 |--------|-----------|-------|
 | Gerenciador de pacotes | **uv** | Ambiente, dependências e execução (`uv sync`, `uv run`) |
 | Agentes de IA | **PydanticAI** | Definição de cada agente, *tools* e integração **MCP** (todo o harness possível) |
-| Orquestração | **LangGraph** | Grafo que conecta Discovery → Plan → Validação, com aresta de loop condicional e threshold |
-| Interface | **CLI `loopforge`** (documentada no `README.md`) | Executar comandos e passar recursos extras (links, diretórios de docs) como contexto |
-| Configuração | **YAML** | Arquivo lido antes da execução (LLM de cada agente, objetivo da SKILL, limite de iterações) |
-| Observabilidade | Logs estruturados + **LangGraph (visualização do grafo)** | Acompanhar a execução em tempo real |
+| Orquestração | **LangGraph** | Grafo Discovery → Plan → Write → Judge, com aresta de loop condicional e checkpointer SQLite (memory spine) |
+| Interface | **CLI `loopforge`** (Typer; documentada no `README.md`) | Comandos `run`/`validate` e recursos extras (links, diretórios de docs) como contexto |
+| Configuração | **YAML** | Arquivo lido antes da execução (LLM de cada agente, objetivo da SKILL, loop e pesos do scoring) |
+| Observabilidade | Logs estruturados (**structlog + rich**) + **LangGraph Studio** (`langgraph dev`) | Acompanhar a execução em tempo real |
 
 ## Arquivo de configuração YAML
 
 A aplicação **lê o YAML antes da execução**. Campos obrigatórios:
 
-1. **LLM de cada agente** — `discovery`, `plan`, `validation` (cada um pode ser uma LLM distinta).
+1. **LLM de cada agente** — `discovery`, `plan`, `write`, `judge` (cada um pode ser uma LLM distinta).
 2. **Objetivo da SKILL** — o alvo que o loop deve atingir.
-3. **Limite de iterações** — teto do loop (anti loop-infinito).
 
-Esquema oficial das chaves (formato de `model` segue o padrão PydanticAI `provider:modelo`):
+Os demais campos têm defaults (loop e pesos do scoring). Esquema oficial (formato de `model` segue o
+padrão PydanticAI `provider:modelo`). Veja `config.example.yaml` para a versão anotada completa:
 
 ```yaml
 agents:
   discovery:
-    model: anthropic:claude-opus-4-8     # LLM do agente de Discovery
+    model: google-gla:gemini-2.0-flash    # LLM do agente de Discovery
   plan:
-    model: openai:gpt-4o                  # LLM do agente de Plan
-  validation:
-    model: google-gla:gemini-2.0-flash    # LLM do agente de Validação/Judge
+    model: anthropic:claude-opus-4-8       # LLM do agente de Plan
+  write:
+    model: anthropic:claude-opus-4-8       # LLM do agente de Write
+  judge:
+    model: google-gla:gemini-2.0-flash     # LLM do agente de Validação/Judge
 
 skill:
   objetivo: "<objetivo definido pelo usuário>"
   output_dir: "./skills"                  # onde a SKILL final é gravada
+  best_practices: null                    # opcional; path p/ uma SKILL com regras Asaas
 
 loop:
-  max_iteracoes: 5         # threshold de iterações (anti loop-infinito)
-  score_minimo: 0.8        # threshold de qualidade p/ aprovar a SKILL (0.0–1.0)
+  max_iteracoes: 6          # teto do loop (anti loop-infinito)
+  score_minimo: 0.8         # threshold de qualidade p/ aprovar a SKILL (0.0–1.0)
+  no_progress_paciencia: 2  # iterações sem melhora do melhor score antes de parar
 
-contexto:                  # opcional; também passável via flags da CLI
-  docs: []                 # lista de diretórios de documentação
-  links: []                # lista de URLs
+scoring:                    # pesos opcionais (cada grupo deve somar 1.0)
+  pesos:
+    deterministico: 0.30    # peso da camada de checks programáticos
+    judge: 0.70             # peso da camada LLM-as-judge
+  deterministico:           # 5 checks (somam 1.0) + budget de linhas
+    frontmatter_valido: 0.25
+    description_tem_trigger: 0.25
+    dentro_budget: 0.20
+    refs_existem: 0.15
+    markdown_valido: 0.15
+    budget_linhas: 500
+  judge:                    # 5 dimensões da rubrica (somam 1.0)
+    alinhamento_objetivo: 0.30
+    discoverability: 0.20
+    concisao_clareza: 0.15
+    completude: 0.20
+    aderencia_best_practices: 0.15
+
+contexto:                   # opcional; também passável via flags da CLI
+  docs: []                  # lista de diretórios de documentação
+  links: []                 # lista de URLs
 ```
 
-Chaves canônicas: `agents.{discovery,plan,validation}.model`, `skill.objetivo`,
-`skill.output_dir`, `loop.max_iteracoes`, `loop.score_minimo`, `contexto.docs`, `contexto.links`.
+> **Anti-viés (default):** `agents.judge.model` deve usar um provider **≠** `agents.write.model`,
+> para o avaliador não ser cúmplice de quem escreveu. Os 4 nós do grafo são `discovery`, `plan`,
+> `write`, `judge`.
+
+Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`,
+`skill.output_dir`, `skill.best_practices`, `loop.max_iteracoes`, `loop.score_minimo`,
+`loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
+`scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`.
+
+> A validação de pesos é estrita: `scoring.pesos`, `scoring.deterministico` (5 checks) e
+> `scoring.judge` (5 dimensões) **cada grupo deve somar 1.0**, senão o load levanta `ValidationError`.
 
 > Cada agente usa uma LLM **diferente** por design — isso é central ao conceito. Não force todos
 > os agentes para o mesmo provider/modelo sem instrução explícita.
 
 ## Conceitos centrais (ao implementar, respeitar)
 
-- **Papéis isolados por LLM** — Discovery, Plan e Validação são agentes PydanticAI separados, cada
+- **Papéis isolados por LLM** — Discovery, Plan, Write e Judge são agentes PydanticAI separados, cada
   um com seu modelo configurado via YAML. Evite acoplar lógica entre eles fora do grafo.
-- **Loop com saída garantida** — a condição de continuação do LangGraph deve checar **tanto** a
-  métrica de avaliação (`loop.score_minimo`) **quanto** o contador de iterações (`loop.max_iteracoes`).
-  Sair do loop SEMPRE que qualquer um dos dois for atingido.
-- **Métricas de avaliação** — o agente de Validação produz uma pontuação/veredito estruturado
-  (PydanticAI → saída tipada). É essa métrica que alimenta a decisão de loop.
-- **Contexto incremental via CLI** — links e diretórios de documentação passados na CLI são
-  injetados como contexto adicional na execução dos agentes (tools/MCP). Trate-os como entrada,
-  não hardcode.
-- **Observabilidade dupla** — toda execução emite (a) logs estruturados e (b) é inspecionável pela
-  visualização de grafo do LangGraph. Não remova/silencie instrumentação ao refatorar.
+- **Loop com saída garantida** — `decidir_loop` (em `graph.py`) checa **score** (`loop.score_minimo`),
+  **teto de iterações** (`loop.max_iteracoes`) **e** estagnação (`loop.no_progress_paciencia`). Sai do
+  loop SEMPRE que qualquer um for atingido: `aprovado`, `max_iter` ou `estagnado`.
+- **Métrica híbrida** — score composto: `score_final = pesos.deterministico * det + pesos.judge * jdg`.
+  A camada determinística roda checks programáticos sobre o `SkillArtifact`; a camada judge é a rubrica
+  do Judge (saída tipada `JudgeVerdict`). Sem `best_practices`, a dimensão `aderencia_best_practices` é
+  dropada e os pesos do judge são renormalizados.
+- **best_practices como contexto herdado** — quando `skill.best_practices` aponta p/ uma SKILL, seu
+  conteúdo é injetado nos prompts de todos os agentes **e** pontuado pelo Judge.
+- **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
+  estendem `contexto.docs`/`contexto.links` do YAML. Trate-os como entrada, não hardcode.
+- **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b) é
+  inspecionável no LangGraph Studio (`langgraph.json` → `graph_app.py:graph`). O checkpointer SQLite em
+  `.loopforge/runs/` serve de memory spine e time-travel. Não remova/silencie instrumentação ao refatorar.
+- **Agentes nunca chamam API real em teste** — usar `TestModel`/`FunctionModel` do PydanticAI via
+  `agent.override(model=...)`.
 
 ## Comandos
 
-> ⚠️ Convenções-alvo. Confirme/atualize conforme o `pyproject.toml`/`README.md` reais forem criados.
 > A CLI `loopforge` é **documentada no `README.md`** (fonte de verdade dos comandos e flags).
+> O grafo p/ o Studio fica em `langgraph.json`.
 
 ```bash
 # Setup do ambiente (uv lê o pyproject.toml e resolve as dependências):
@@ -128,10 +169,12 @@ uv run loopforge validate --config config.yaml
 uv run pytest                      # suíte completa
 uv run pytest <caminho>::<teste>   # um único teste
 
+# Abrir o LangGraph Studio (visualização do grafo; exige chaves de API):
+uv run langgraph dev
+
 # Adicionar/remover dependências:
 uv add <pacote>
 uv remove <pacote>
 ```
 
-Ao definir os comandos reais, **atualize esta seção e o `README.md` juntos** — eles não devem
-divergir.
+Ao mudar comandos ou flags, **atualize esta seção e o `README.md` juntos** — eles não devem divergir.
