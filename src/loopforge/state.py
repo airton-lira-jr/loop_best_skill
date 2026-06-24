@@ -7,12 +7,26 @@ from pydantic import BaseModel, Field
 from loopforge.config import AppConfig
 
 
+class FonteConteudo(BaseModel):
+    """Conteúdo lido de uma fonte de referência (arquivo de doc ou URL)."""
+
+    origem: str
+    conteudo: str
+
+
 class Contexto(BaseModel):
-    """Contexto herdado injetado nos agentes."""
+    """Contexto herdado injetado nos agentes.
+
+    ``docs`` e ``links`` guardam os identificadores brutos (paths/URLs);
+    ``docs_conteudo`` e ``links_conteudo`` guardam o conteúdo já lido/baixado
+    dessas fontes, que é o que de fato vai para o prompt dos agentes.
+    """
 
     docs: list[str] = Field(default_factory=list)
     links: list[str] = Field(default_factory=list)
     best_practices_conteudo: str | None = None
+    docs_conteudo: list[FonteConteudo] = Field(default_factory=list)
+    links_conteudo: list[FonteConteudo] = Field(default_factory=list)
 
 
 class SkillPlan(BaseModel):

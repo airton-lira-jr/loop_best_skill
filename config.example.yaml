@@ -72,8 +72,15 @@ scoring:
 
 # -----------------------------------------------------------------------------
 # 5. Contexto adicional (opcional). Também passável via flags da CLI:
-#    --doc ./caminho   e   --link https://...   (estendem/sobrepõem o que está aqui).
+#    --doc ./caminho   e   --link https://...   (estendem o que está aqui).
+#
+#    docs  -> paths de ARQUIVOS ou DIRETÓRIOS. O CONTEÚDO é lido e injetado no
+#             prompt de todos os agentes. Diretórios são percorridos
+#             recursivamente (só arquivos de texto: .md/.txt/.py/.yaml/...).
+#             Arquivos > 200 KB ou binários são ignorados.
+#    links -> URLs. O CORPO de cada uma é baixado via HTTP e injetado no prompt.
+#             Links que falharem (rede/404) são ignorados (segue sem eles).
 # -----------------------------------------------------------------------------
 contexto:
-  docs: []     # lista de diretórios de documentação injetados como contexto
-  links: []    # lista de URLs injetadas como contexto
+  docs: []     # ex: ["./docs/arquitetura", "./referencias/guia.md"]
+  links: []    # ex: ["https://docs.python.org/3/library/asyncio.html"]

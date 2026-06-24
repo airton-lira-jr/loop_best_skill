@@ -26,9 +26,13 @@ def _ctx_texto(state: LoopState) -> str:
     """
     partes = [f"OBJETIVO: {state.objetivo}"]
     if state.contexto.docs:
-        partes.append("DOCS: " + ", ".join(state.contexto.docs))
+        partes.append("DOCS (paths): " + ", ".join(state.contexto.docs))
+    for fonte in state.contexto.docs_conteudo:
+        partes.append(f"--- DOC: {fonte.origem} ---\n{fonte.conteudo}")
     if state.contexto.links:
-        partes.append("LINKS: " + ", ".join(state.contexto.links))
+        partes.append("LINKS (urls): " + ", ".join(state.contexto.links))
+    for fonte in state.contexto.links_conteudo:
+        partes.append(f"--- LINK: {fonte.origem} ---\n{fonte.conteudo}")
     if state.contexto.best_practices_conteudo:
         partes.append("BEST PRACTICES (Asaas):\n" + state.contexto.best_practices_conteudo)
     return "\n".join(partes)

@@ -79,7 +79,60 @@ Veja [`config.example.yaml`](./config.example.yaml) — todos os campos são com
 - `loop.score_minimo` — threshold de aprovação (0.0–1.0).
 - `loop.no_progress_paciencia` — para se o score não melhora por N iterações.
 - `scoring.*` — pesos da métrica (detalhado abaixo).
-- `contexto.{docs,links}` — contexto adicional (também via flags `--doc`/`--link`).
+- `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
+  lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
+
+---
+
+## Como passar objetivo, referências e onde a skill é gravada
+
+Esta é a parte que liga o **seu material** ("o monte de coisa pra atingir o objetivo") aos agentes.
+
+### 1. O objetivo
+
+Sempre no YAML, em `skill.objetivo`. Descreva **a skill que você quer**, não "construa o sistema X" —
+o loopforge gera uma **SKILL do Claude** (um `SKILL.md` + arquivos de referência), não um serviço.
+
+```yaml
+skill:
+  objetivo: "Skill que revisa PRs de Python procurando bugs de concorrência"
+```
+
+### 2. Arquivos de referência (`docs`) e links
+
+Você define em **dois lugares** (os dois se somam):
+
+- No YAML, em `contexto.docs` / `contexto.links`.
+- Na CLI, com `--doc <path>` / `--link <url>` (repetíveis) — **estendem** o YAML.
+
+```yaml
+contexto:
+  docs:  ["./docs/arquitetura", "./referencias/guia.md"]   # arquivo OU diretório
+  links: ["https://docs.python.org/3/library/asyncio.html"]
+```
+```bash
+uv run loopforge run --config config.yaml \
+  --doc ./docs/extra --doc ./padroes.md \
+  --link https://exemplo.com/guia
+```
+
+**O que de fato acontece com cada um:**
+
+| Entrada | O que é injetado nos agentes |
+|---|---|
+| `contexto.docs` (arquivo) | O **conteúdo do arquivo** é lido (UTF-8) e injetado. |
+| `contexto.docs` (diretório) | Percorrido **recursivamente**; lê só arquivos de texto (`.md`, `.txt`, `.py`, `.yaml`, ...). Ignora binários, ocultos e arquivos > 200 KB. |
+| `contexto.links` | O **corpo da URL** é baixado via HTTP e injetado. Link que falhar (rede/404) é ignorado — o loop segue sem ele. |
+| `skill.best_practices` | O **conteúdo** da SKILL apontada é injetado **e** pontuado pelo Judge (`aderencia_best_practices`). |
+
+Ou seja: para um arquivo de referência **influenciar de verdade** o Discovery/Plan, basta colocá-lo em
+`contexto.docs` (ou passar `--doc`). O conteúdo entra no prompt de todos os 4 agentes.
+
+### 3. Onde a skill final é gravada
+
+No diretório `skill.output_dir` (default `./skills`), dentro de uma subpasta com o nome da skill em
+slug. Ex.: `./skills/pr-review/SKILL.md` + os arquivos referenciados. Os runs (memory spine / SQLite)
+ficam em `.loopforge/runs/` (ignorado pelo git).
 
 ---
 
