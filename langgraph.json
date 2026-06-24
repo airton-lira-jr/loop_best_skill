@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "loopforge": "./src/loopforge/graph_app.py:graph"
+  },
+  "env": ".env"
+}
