@@ -51,18 +51,25 @@ export GEMINI_API_KEY=...     # (ou GOOGLE_API_KEY, conforme o provider)
 ## Uso
 
 ```bash
-# Validar o YAML sem executar o loop:
-uv run loopforge validate --config config.yaml
+# Rodar o loop lendo ./config.yaml por padrão (forma mais curta):
+uv run loopforge
 
-# Rodar o loop:
+# Equivalente explícito (--config default = config.yaml):
 uv run loopforge run --config config.yaml
 
+# Validar o YAML sem executar o loop:
+uv run loopforge validate            # usa ./config.yaml
+uv run loopforge validate --config outro.yaml
+
 # Injetar contexto extra (estende contexto.docs / contexto.links do YAML):
-uv run loopforge run --config config.yaml --doc ./docs --link https://exemplo.com
+uv run loopforge run --doc ./docs --link https://exemplo.com
 
 # Monitorar o grafo ao vivo no browser (LangGraph Studio):
 uv run langgraph dev
 ```
+
+> `uv run loopforge` sem subcomando roda o loop lendo `config.yaml` do diretório atual. O `--config`
+> é opcional (default `config.yaml`); informe-o só para apontar para outro arquivo.
 
 ---
 
