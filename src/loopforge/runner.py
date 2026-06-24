@@ -9,7 +9,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from loopforge.agents.builder import AgentsBundle, build_agents
 from loopforge.config import load_config
-from loopforge.context import build_contexto
+from loopforge.context import build_contexto, resolver_objetivo
 from loopforge.graph import build_graph
 from loopforge.logging import get_logger
 from loopforge.persistence import gravar_skill
@@ -62,12 +62,13 @@ async def run_loop(
     """
     config = load_config(config_path)
     contexto: Contexto = build_contexto(config, extra_docs, extra_links)
+    objetivo = resolver_objetivo(config.skill.objetivo)
 
     runs_dir = Path(".loopforge/runs")
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     estado_inicial = LoopState(
-        objetivo=config.skill.objetivo, contexto=contexto, config=config
+        objetivo=objetivo, contexto=contexto, config=config
     )
 
     agents = build_agents(config)

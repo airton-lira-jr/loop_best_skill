@@ -82,3 +82,28 @@ def test_link_que_falha_e_ignorado():
 
     ctx = build_contexto(cfg, fetcher=fetch)
     assert [f.origem for f in ctx.links_conteudo] == ["http://ok"]
+
+
+def test_resolver_objetivo_texto_literal():
+    from loopforge.context import resolver_objetivo
+
+    assert resolver_objetivo("Skill que faz X") == "Skill que faz X"
+
+
+def test_resolver_objetivo_le_arquivo(tmp_path):
+    from loopforge.context import resolver_objetivo
+
+    arq = tmp_path / "obj.md"
+    arq.write_text("# Objetivo\nFazer X", encoding="utf-8")
+    assert resolver_objetivo(str(arq)) == "# Objetivo\nFazer X"
+
+
+def test_resolver_objetivo_concatena_diretorio(tmp_path):
+    from loopforge.context import resolver_objetivo
+
+    pasta = tmp_path / "objetivo"
+    pasta.mkdir()
+    (pasta / "a.md").write_text("parte A", encoding="utf-8")
+    (pasta / "b.md").write_text("parte B", encoding="utf-8")
+    out = resolver_objetivo(str(pasta))
+    assert "parte A" in out and "parte B" in out

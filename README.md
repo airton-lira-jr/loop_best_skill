@@ -28,13 +28,14 @@ um **score de qualidade da skill** — corrigindo-se a cada volta até passar no
 
 | Nó | Papel | LLM (default) |
 |----|-------|---------------|
-| **Discovery** | Pesquisa soluções, tecnologias e estratégias pro objetivo. Roda 1x. | `google-gla:gemini-2.0-flash` |
-| **Plan** | Converte a pesquisa numa **spec da skill**. É o nó que **itera** no loop. | `anthropic:claude-opus-4-8` |
+| **Discovery** | Propõe **N abordagens** candidatas pro objetivo (com prós/contras/adequação) e **recomenda a melhor**. Roda 1x. | `google-gla:gemini-2.0-flash` |
+| **Plan** | **Escolhe a melhor abordagem** e a converte numa **spec da skill**. É o nó que **itera** no loop. | `anthropic:claude-opus-4-8` |
 | **Write** | Escreve `SKILL.md` + arquivos referenciados. | `anthropic:claude-opus-4-8` |
-| **Judge** | Avalia a skill e produz o score. **LLM diferente do Write** (anti-viés). | `google-gla:gemini-2.0-flash` |
+| **Judge** | Avalia a skill e produz o score. **LLM diferente do Write** (anti-viés). | `anthropic:claude-sonnet-4.6` |
 
-Os agentes "conversam" via **estado compartilhado** do grafo: o feedback do Judge volta pro Plan na
-iteração seguinte.
+Os agentes "conversam" via **estado compartilhado** do grafo: o Discovery levanta opções, o Plan decide
+o melhor caminho, e o feedback do Judge volta pro Plan na iteração seguinte. **Quem define a melhor
+abordagem pro objetivo é a interação entre os agentes**, não parâmetros manuais.
 
 ---
 
@@ -75,18 +76,21 @@ uv run langgraph dev
 
 ## Configuração YAML
 
-Veja [`config.example.yaml`](./config.example.yaml) — todos os campos são comentados. Chaves canônicas:
+Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (só o essencial;
+`loop` e `scoring` usam defaults) e [`config.full.example.yaml`](./config.full.example.yaml) mostra
+**todos** os campos comentados. Chaves canônicas:
 
 - `agents.{discovery,plan,write,judge}.model` — LLM de cada nó (formato `provider:modelo`).
-- `skill.objetivo` — o alvo que o loop deve atingir.
+- `skill.objetivo` — o alvo do loop. Aceita **texto literal OU um path**: se for um arquivo, lê o
+  conteúdo; se for um diretório, concatena os `.md` dentro dele. Use arquivo para objetivos longos
+  (evita a dor de quebra de linha no YAML).
 - `skill.output_dir` — onde a SKILL final é gravada.
 - `skill.best_practices` — **opcional**. Path para uma SKILL com as regras da Asaas. É **injetada como
   contexto herdado** em todos os agentes **e** pontuada pelo Judge (dimensão `aderencia_best_practices`).
   `null`/omitido (ou arquivo ausente) ⇒ a dimensão é dropada e os pesos do Judge são renormalizados.
-- `loop.max_iteracoes` — teto duro de iterações.
-- `loop.score_minimo` — threshold de aprovação (0.0–1.0).
-- `loop.no_progress_paciencia` — para se o score não melhora por N iterações.
-- `scoring.*` — pesos da métrica (detalhado abaixo).
+- `loop.*` — **opcional** (defaults: `max_iteracoes=6`, `score_minimo=0.8`, `no_progress_paciencia=2`).
+- `scoring.*` — **opcional**; pesos da métrica com defaults sensatos (detalhado abaixo). Só mexa se
+  quiser recalibrar.
 - `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
   lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
 - `mcp.{config_path,agentes}` — **opcional**. Servidores MCP que os agentes podem chamar ao vivo
@@ -100,12 +104,17 @@ Esta é a parte que liga o **seu material** ("o monte de coisa pra atingir o obj
 
 ### 1. O objetivo
 
-Sempre no YAML, em `skill.objetivo`. Descreva **a skill que você quer**, não "construa o sistema X" —
+No YAML, em `skill.objetivo`. Descreva **a skill que você quer**, não "construa o sistema X" —
 o loopforge gera uma **SKILL do Claude** (um `SKILL.md` + arquivos de referência), não um serviço.
+
+O campo aceita **texto direto** ou um **path** (arquivo `.md` ou diretório de `.md`). Para objetivos
+longos, prefira o arquivo — sem quebra de linha feia no YAML:
 
 ```yaml
 skill:
-  objetivo: "Skill que revisa PRs de Python procurando bugs de concorrência"
+  objetivo: "Skill que revisa PRs de Python procurando bugs de concorrência"  # texto direto
+  # objetivo: "./objetivo/skill.md"   # ou um arquivo
+  # objetivo: "./objetivo"            # ou um diretório de .md (concatenados)
 ```
 
 ### 2. Arquivos de referência (`docs`) e links

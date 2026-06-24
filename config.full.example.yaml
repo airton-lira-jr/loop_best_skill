@@ -1,0 +1,95 @@
+# =============================================================================
+# Loop Engineer (loopforge) — EXEMPLO COMPLETO (referência de todos os campos)
+# =============================================================================
+# Para o dia a dia use `config.example.yaml` (mínimo). Este arquivo mostra TODOS
+# os campos e seus defaults. `loop` e `scoring` são OPCIONAIS — se omitidos, os
+# defaults abaixo são aplicados. Formato de `model`: "provider:modelo".
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. LLM de cada agente (um por nó do grafo).
+#    Princípio anti-viés: o Judge usa um provider/modelo DIFERENTE do Write.
+# -----------------------------------------------------------------------------
+agents:
+  discovery:
+    model: google-gla:gemini-2.0-flash      # propõe N abordagens p/ atingir o objetivo
+  plan:
+    model: anthropic:claude-opus-4-8         # escolhe a melhor abordagem e faz a spec (nó que itera)
+  write:
+    model: anthropic:claude-opus-4-8         # escreve SKILL.md + arquivos referenciados
+  judge:
+    model: anthropic:claude-sonnet-4.6      # avalia a skill (LLM != Write → menos viés)
+
+# -----------------------------------------------------------------------------
+# 2. Objetivo da SKILL + saída + best practices (opcional).
+#    `objetivo` aceita TEXTO literal OU um PATH:
+#      - arquivo  -> lê o conteúdo (ideal p/ objetivos longos em Markdown)
+#      - diretório-> concatena todos os .md dentro dele
+# -----------------------------------------------------------------------------
+skill:
+  objetivo: "./objetivo"                      # path (.md ou pasta) OU texto direto
+  output_dir: "./skills"                      # onde a SKILL final é gravada (SKILL.md + refs)
+  best_practices: null                        # OPCIONAL. SKILL com regras Asaas; injetada em todos
+                                              # os agentes E pontuada pelo Judge. null/omitido =>
+                                              # dimensão aderencia_best_practices é dropada e
+                                              # os pesos do Judge são renormalizados.
+                                              # ex: "./skills/asaas-base/SKILL.md"
+
+# -----------------------------------------------------------------------------
+# 3. Controle do loop (OPCIONAL — defaults abaixo). Saída SEMPRE garantida:
+#    para em score atingido, teto de iterações OU estagnação (no-progress).
+# -----------------------------------------------------------------------------
+loop:
+  max_iteracoes: 6            # teto duro de iterações (anti loop-infinito)
+  score_minimo: 0.8           # threshold de aprovação (0.0–1.0); score_final >= isto => aprovado
+  no_progress_paciencia: 2    # para se o score_final não melhorar por N iterações seguidas
+
+# -----------------------------------------------------------------------------
+# 4. SCORING (OPCIONAL — defaults abaixo). A métrica que decide aprovar/repetir.
+#    score_final = pesos.deterministico * score_det + pesos.judge * score_judge
+#    Cada bloco soma 1.0 internamente. Exemplos numéricos no README.
+# -----------------------------------------------------------------------------
+scoring:
+  pesos:
+    deterministico: 0.30      # peso da camada de checks programáticos (reprodutível, ~grátis)
+    judge: 0.70               # peso da camada LLM-as-judge (julgamento semântico)
+
+  deterministico:             # 5 checks (somam 1.0); cada um produz 0..1
+    frontmatter_valido: 0.25      # YAML do frontmatter parseia e tem name + description
+    description_tem_trigger: 0.25 # description contém gatilho ("Use when…/Use quando…")
+    dentro_budget: 0.20           # SKILL.md dentro do teto de linhas (concisão)
+    refs_existem: 0.15            # arquivos referenciados existem (progressive disclosure ok)
+    markdown_valido: 0.15         # markdown bem-formado
+    budget_linhas: 500            # teto de linhas do SKILL.md p/ o check `dentro_budget`
+
+  judge:                      # 5 dimensões da rubrica (somam 1.0); nota LLM 0..1
+    alinhamento_objetivo: 0.30        # a skill cumpre o `skill.objetivo`?
+    discoverability: 0.20             # qualidade da description/triggers
+    concisao_clareza: 0.15            # regra+porquê em vez de imperativo; sem redundância
+    completude: 0.20                  # cobre o objetivo de ponta a ponta?
+    aderencia_best_practices: 0.15    # segue a SKILL `skill.best_practices`?
+
+# -----------------------------------------------------------------------------
+# 5. Contexto adicional (opcional). Também via flags da CLI: --doc / --link.
+#    docs  -> arquivos OU diretórios; o CONTEÚDO é lido e injetado (dir recursivo,
+#             só texto: .md/.txt/.py/.yaml/...; > 200 KB ou binário é ignorado).
+#    links -> URLs; o CORPO é baixado via HTTP e injetado (falha => ignora).
+# -----------------------------------------------------------------------------
+contexto:
+  docs: []     # ex: ["./docs/arquitetura", "./referencias/guia.md"]
+  links: []    # ex: ["https://docs.python.org/3/library/asyncio.html"]
+
+# -----------------------------------------------------------------------------
+# 6. MCP (opcional) — tools que os agentes chamam AUTONOMAMENTE em runtime
+#    (ex: Confluence, Jira). config_path = JSON formato `mcpServers` (mesmo do
+#    Claude Desktop/Cursor/Claude Code). Suporta ${VAR} e ${VAR:-default}.
+#
+#    Exemplo de .mcp.json:
+#      {"mcpServers": {
+#         "confluence": {"command": "npx", "args": ["-y", "mcp-confluence"],
+#                         "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}},
+#         "jira":       {"command": "npx", "args": ["-y", "mcp-jira"]}}}
+# -----------------------------------------------------------------------------
+mcp:
+  config_path: null                 # ex: "./.mcp.json"; null => sem MCP
+  agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)

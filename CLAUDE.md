@@ -35,9 +35,9 @@ Objetivo do usuário (YAML)
                                                   SKILL final
 ```
 
-- **Discovery Agent** — faz *discovery* de soluções tecnológicas, melhores caminhos e estratégias.
-  Roda só na 1ª iteração.
-- **Plan Agent** — elabora a spec da SKILL (`SkillPlan`) com base no discovery. É o nó que itera,
+- **Discovery Agent** — propõe N abordagens candidatas (`DiscoveryReport` com `Abordagem[]` +
+  recomendada + justificativa) e recomenda a melhor. Roda só na 1ª iteração.
+- **Plan Agent** — escolhe a melhor abordagem e elabora a spec da SKILL (`SkillPlan`). É o nó que itera,
   incorporando o feedback do Judge.
 - **Write Agent** — escreve o `SKILL.md` (frontmatter + corpo) e os arquivos referenciados
   (`SkillArtifact`) a partir da spec.
@@ -79,7 +79,7 @@ agents:
     model: google-gla:gemini-2.0-flash     # LLM do agente de Validação/Judge
 
 skill:
-  objetivo: "<objetivo definido pelo usuário>"
+  objetivo: "<texto OU path .md/diretório>" # texto literal ou path (arquivo/dir de .md) → lido
   output_dir: "./skills"                  # onde a SKILL final é gravada
   best_practices: null                    # opcional; path p/ uma SKILL com regras Asaas
 

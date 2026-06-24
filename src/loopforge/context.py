@@ -36,6 +36,33 @@ _TIMEOUT_HTTP = 15.0
 Fetcher = Callable[[str], str | None]
 
 
+def resolver_objetivo(objetivo: str) -> str:
+    """Resolve o objetivo a partir de um path ou texto literal.
+
+    Se ``objetivo`` for um arquivo existente, lê o conteúdo. Se for um
+    diretório, concatena (em ordem) todos os ``.md`` dentro dele. Caso
+    contrário, devolve a própria string (objetivo inline).
+
+    Args:
+        objetivo: path para arquivo/diretório de objetivo, ou o texto direto.
+
+    Returns:
+        O texto do objetivo já resolvido.
+    """
+    caminho = Path(objetivo)
+    if caminho.is_file():
+        return caminho.read_text(encoding="utf-8")
+    if caminho.is_dir():
+        partes = [
+            arq.read_text(encoding="utf-8")
+            for arq in sorted(caminho.rglob("*.md"))
+            if arq.is_file()
+        ]
+        if partes:
+            return "\n\n".join(partes)
+    return objetivo
+
+
 def _ler_texto(caminho: Path) -> str | None:
     """Lê um arquivo como UTF-8; None se for grande demais, binário ou ilegível.
 

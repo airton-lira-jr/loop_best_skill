@@ -10,7 +10,7 @@ from pydantic_ai.toolsets import AbstractToolset
 
 from loopforge.agents.prompts import DISCOVERY_SYS, JUDGE_SYS, PLAN_SYS, WRITE_SYS
 from loopforge.config import AppConfig
-from loopforge.state import JudgeVerdict, SkillArtifact, SkillPlan
+from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
 
 
 @dataclass
@@ -69,6 +69,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
         discovery=Agent(
             config.agents.discovery.model,
             system_prompt=DISCOVERY_SYS,
+            output_type=DiscoveryReport,
             toolsets=_toolsets_para(config, "discovery"),
             defer_model_check=True,
         ),

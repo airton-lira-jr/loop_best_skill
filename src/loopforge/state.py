@@ -29,6 +29,24 @@ class Contexto(BaseModel):
     links_conteudo: list[FonteConteudo] = Field(default_factory=list)
 
 
+class Abordagem(BaseModel):
+    """Uma abordagem candidata levantada pelo Discovery para atingir o objetivo."""
+
+    nome: str
+    resumo: str
+    pros: list[str] = Field(default_factory=list)
+    contras: list[str] = Field(default_factory=list)
+    adequacao: float = Field(ge=0.0, le=1.0)  # quão bem atinge o objetivo (0..1)
+
+
+class DiscoveryReport(BaseModel):
+    """Saída do Discovery: várias abordagens + a recomendada (com justificativa)."""
+
+    abordagens: list[Abordagem] = Field(default_factory=list)
+    recomendada: str  # nome da abordagem escolhida
+    justificativa: str
+
+
 class SkillPlan(BaseModel):
     """Spec da skill produzida pelo agente Plan."""
 
@@ -86,7 +104,7 @@ class LoopState(BaseModel):
     objetivo: str
     contexto: Contexto
     config: AppConfig
-    discovery_report: str = ""
+    discovery_report: DiscoveryReport | None = None
     plan: SkillPlan | None = None
     artifact: SkillArtifact | None = None
     verdict: JudgeVerdict | None = None

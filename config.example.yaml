@@ -1,111 +1,31 @@
 # =============================================================================
-# Loop Engineer (loopforge) — arquivo de configuração de exemplo
+# Loop Engineer (loopforge) — config MÍNIMO. Copie p/ config.yaml e ajuste.
 # =============================================================================
-# A aplicação LÊ este YAML ANTES de executar o loop.
-# Formato de `model` segue o padrão PydanticAI: "provider:modelo".
-# Copie para `config.yaml` e ajuste. Valide com: uv run loopforge validate --config config.yaml
+# Só o essencial. `loop` e `scoring` têm defaults sensatos (não precisa definir).
+# Para ver TODOS os campos e ajustar pesos/iterações: config.full.example.yaml.
+# Valide com: uv run loopforge validate          (lê config.yaml por padrão)
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# 1. LLM de cada agente (um por nó do grafo).
-#    Princípio anti-viés: o Judge usa um provider DIFERENTE do Write.
-#    Default abaixo: Discovery/Judge = Gemini, Plan/Write = Anthropic.
-# -----------------------------------------------------------------------------
+# LLM de cada nó. Anti-viés: o Judge usa provider/modelo != do Write.
 agents:
-  discovery:
-    model: google-gla:gemini-2.0-flash      # pesquisa soluções/tecnologias/estratégias
-  plan:
-    model: anthropic:claude-opus-4-8         # elabora a spec da skill (nó que itera no loop)
-  write:
-    model: anthropic:claude-opus-4-8         # escreve SKILL.md + arquivos referenciados
-  judge:
-    model: anthropic:claude-sonnet-4.6      # avalia a skill (LLM != Write → menos viés)
+  discovery: {model: google-gla:gemini-2.0-flash}
+  plan:      {model: anthropic:claude-opus-4-8}
+  write:     {model: anthropic:claude-opus-4-8}
+  judge:     {model: anthropic:claude-sonnet-4.6}
 
-# -----------------------------------------------------------------------------
-# 2. Objetivo da SKILL + saída + best practices herdadas.
-# -----------------------------------------------------------------------------
 skill:
-  objetivo: "Crie uma SKILL com objetivo de montar uma pipeline de extração dos dados do confluence e Jira, adaptando e 
-  convertendo para o formato de schema do SpineRecord conforme documentações e links de referencia" 
-  output_dir: "./skills"                      # onde a SKILL final é gravada (diretório SKILL.md + refs)
-  best_practices: "./skills/asaas-base/SKILL.md"  # SKILL com regras Asaas; injetada como contexto
-                                                  # herdado em TODOS os agentes E pontuada pelo Judge.
-                                                  # Deixe null/omita se não houver.
+  # `objetivo` aceita TEXTO direto OU um PATH (.md, ou um diretório de .md).
+  # Para objetivos longos, prefira o arquivo — sem dor de quebra de linha no YAML.
+  objetivo: "./objetivo"          # ex: "./objetivo/skill.md"  ou  "Skill que faz X"
+  output_dir: "./skills"          # onde a SKILL final é gravada
+  # best_practices: "./skills/asaas-base/SKILL.md"   # opcional (regras Asaas)
 
-# -----------------------------------------------------------------------------
-# 3. Controle do loop (saída SEMPRE garantida).
-#    Para em QUALQUER uma das condições: score atingido, teto de iterações,
-#    ou estagnação (no-progress).
-# -----------------------------------------------------------------------------
-loop:
-  max_iteracoes: 6            # teto duro de iterações (anti loop-infinito)
-  score_minimo: 0.8           # threshold de aprovação (0.0–1.0); score_final >= isto => aprovado
-  no_progress_paciencia: 2    # para se o score_final não melhorar por N iterações seguidas
-
-# -----------------------------------------------------------------------------
-# 4. SCORING — a métrica que decide aprovar/repetir o loop.
-#    score_final = pesos.deterministico * score_det + pesos.judge * score_judge
-#    Cada bloco abaixo soma 1.0 internamente. Veja exemplos numéricos no README.
-# -----------------------------------------------------------------------------
-scoring:
-  pesos:
-    deterministico: 0.30      # peso da camada de checks programáticos (reprodutível, ~grátis)
-    judge: 0.70               # peso da camada LLM-as-judge (julgamento semântico)
-
-  # 4a. Camada determinística — pesos relativos de cada check (somam 1.0).
-  #     Cada check produz 0..1; score_det = soma ponderada.
-  deterministico:
-    frontmatter_valido: 0.25      # YAML do frontmatter parseia e tem name + description
-    description_tem_trigger: 0.25 # description contém gatilho ("Use when…/Use quando…")
-    dentro_budget: 0.20           # SKILL.md dentro do teto de linhas (concisão)
-    refs_existem: 0.15            # arquivos referenciados existem (progressive disclosure ok)
-    markdown_valido: 0.15         # markdown bem-formado
-    budget_linhas: 500            # teto de linhas do SKILL.md p/ o check `dentro_budget`
-
-  # 4b. Camada LLM-judge — pesos relativos de cada dimensão da rubrica (somam 1.0).
-  #     O agente Judge devolve nota 0..1 por dimensão (structured output tipado).
-  judge:
-    alinhamento_objetivo: 0.30        # a skill cumpre o `skill.objetivo`?
-    discoverability: 0.20             # qualidade da description/triggers (Claude carrega na hora certa?)
-    concisao_clareza: 0.15            # regra+porquê em vez de imperativo; sem redundância
-    completude: 0.20                  # cobre o objetivo de ponta a ponta?
-    aderencia_best_practices: 0.15    # segue a SKILL `skill.best_practices` da Asaas?
-
-# -----------------------------------------------------------------------------
-# 5. Contexto adicional (opcional). Também passável via flags da CLI:
-#    --doc ./caminho   e   --link https://...   (estendem o que está aqui).
-#
-#    docs  -> paths de ARQUIVOS ou DIRETÓRIOS. O CONTEÚDO é lido e injetado no
-#             prompt de todos os agentes. Diretórios são percorridos
-#             recursivamente (só arquivos de texto: .md/.txt/.py/.yaml/...).
-#             Arquivos > 200 KB ou binários são ignorados.
-#    links -> URLs. O CORPO de cada uma é baixado via HTTP e injetado no prompt.
-#             Links que falharem (rede/404) são ignorados (segue sem eles).
-# -----------------------------------------------------------------------------
+# Fontes de referência (conteúdo é lido/baixado e injetado nos agentes).
 contexto:
-  docs: ["./docs"]     # ex: ["./docs/arquitetura", "./referencias/guia.md"]
-  links: []    # ex: ["https://docs.python.org/3/library/asyncio.html"]
+  docs:  []     # arquivos OU diretórios. ex: ["./docs"]
+  links: []     # URLs. ex: ["https://exemplo.com/guia"]
 
-# -----------------------------------------------------------------------------
-# 6. MCP (opcional) — dá aos agentes tools de servidores MCP que eles podem
-#    chamar AUTONOMAMENTE durante a execução (ex: Confluence, Jira, ou qualquer
-#    outro que você tenha habilitado).
-#
-#    config_path -> JSON no formato `mcpServers` (o MESMO do Claude Desktop /
-#                   Cursor / Claude Code). Suporta ${VAR} e ${VAR:-default}.
-#                   null/omitido => nenhum MCP (comportamento padrão).
-#    agentes     -> quais nós recebem as tools. Default: discovery/plan/write
-#                   (o Judge fica sem tools p/ avaliar sem viés).
-#
-#    Exemplo de arquivo .mcp.json:
-#      {
-#        "mcpServers": {
-#          "confluence": {"command": "npx", "args": ["-y", "mcp-confluence"],
-#                          "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}},
-#          "jira":       {"command": "npx", "args": ["-y", "mcp-jira"]}
-#        }
-#      }
-# -----------------------------------------------------------------------------
+# Tools MCP que os agentes chamam ao vivo (Confluence/Jira/etc.). Opcional.
 mcp:
-  config_path: null                 # ex: "./.mcp.json"
-  agentes: [discovery, plan, write] # subconjunto de discovery/plan/write/judge
+  config_path: null               # ex: "./.mcp.json" (formato mcpServers)
+  # agentes: [discovery, plan, write]

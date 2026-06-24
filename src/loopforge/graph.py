@@ -10,9 +10,33 @@ from loopforge.logging import get_logger
 from loopforge.scoring.composite import score_composto
 from loopforge.scoring.deterministic import score_deterministico
 from loopforge.scoring.rubric import score_judge
-from loopforge.state import IteracaoRegistro, LoopState
+from loopforge.state import DiscoveryReport, IteracaoRegistro, LoopState
 
 log = get_logger("graph")
+
+
+def _discovery_texto(report: DiscoveryReport | None) -> str:
+    """Renderiza o relatório de discovery (abordagens + recomendada) para o prompt.
+
+    Args:
+        report: relatório do Discovery, ou None se ainda não rodou.
+
+    Returns:
+        Texto formatado com as abordagens e a recomendada.
+    """
+    if report is None:
+        return "—"
+    linhas = []
+    for a in report.abordagens:
+        linhas.append(
+            f"- {a.nome} (adequação {a.adequacao:.2f}): {a.resumo}"
+            f" | prós: {', '.join(a.pros) or '—'} | contras: {', '.join(a.contras) or '—'}"
+        )
+    abordagens = "\n".join(linhas) or "—"
+    return (
+        f"ABORDAGENS:\n{abordagens}\n"
+        f"RECOMENDADA: {report.recomendada}\nJUSTIFICATIVA: {report.justificativa}"
+    )
 
 
 def _ctx_texto(state: LoopState) -> str:
@@ -81,17 +105,18 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
     agents = agents or build_agents(config)
 
     async def discovery_node(state: LoopState) -> dict:
-        if state.discovery_report:  # roda só na 1ª iteração
+        if state.discovery_report is not None:  # roda só na 1ª iteração
             return {}
         res = await agents.discovery.run(f"{_ctx_texto(state)}\n\nFaça o discovery.")
-        log.info("discovery_ok", chars=len(res.output))
-        return {"discovery_report": res.output}
+        report = res.output
+        log.info("discovery_ok", abordagens=len(report.abordagens), recomendada=report.recomendada)
+        return {"discovery_report": report}
 
     async def plan_node(state: LoopState) -> dict:
         prompt = (
-            f"{_ctx_texto(state)}\n\nDISCOVERY:\n{state.discovery_report}\n\n"
+            f"{_ctx_texto(state)}\n\nDISCOVERY:\n{_discovery_texto(state.discovery_report)}\n\n"
             f"FEEDBACK DO JUDGE (iteração anterior):\n{state.judge_feedback or '—'}\n\n"
-            "Produza/atualize a spec da skill."
+            "Escolha a melhor abordagem e produza/atualize a spec da skill."
         )
         res = await agents.plan.run(prompt)
         log.info("plan_ok", name=res.output.name)

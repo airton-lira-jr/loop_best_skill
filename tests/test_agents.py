@@ -6,7 +6,7 @@ from pydantic_ai.models.test import TestModel
 
 from loopforge.agents.builder import build_agents
 from loopforge.config import AppConfig
-from loopforge.state import JudgeVerdict, SkillArtifact, SkillPlan
+from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
 
 CFG = AppConfig.model_validate({
     "agents": {
@@ -27,6 +27,15 @@ def test_build_agents_cria_os_quatro():
     assert isinstance(bundle.plan, Agent)
     assert isinstance(bundle.write, Agent)
     assert isinstance(bundle.judge, Agent)
+
+
+@pytest.mark.anyio
+async def test_discovery_agent_produz_discovery_report_tipado():
+    """Agente discovery com TestModel produz saída tipada DiscoveryReport."""
+    bundle = build_agents(CFG)
+    with bundle.discovery.override(model=TestModel()):
+        res = await bundle.discovery.run("faça discovery")
+    assert isinstance(res.output, DiscoveryReport)
 
 
 @pytest.mark.anyio
