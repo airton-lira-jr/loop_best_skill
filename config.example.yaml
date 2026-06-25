@@ -25,7 +25,6 @@ contexto:
   docs:  []     # arquivos OU diretórios. ex: ["./docs"]
   links: []     # URLs. ex: ["https://exemplo.com/guia"]
 
-# Tools MCP que os agentes chamam ao vivo (Confluence/Jira/etc.). Opcional.
-mcp:
-  config_path: null               # ex: "./.mcp.json" (formato mcpServers)
-  # agentes: [discovery, plan, write]
+# MCP: por padrão os agentes JÁ herdam os servers MCP locais da sua sessão do
+# Claude Code (~/.claude.json + .mcp.json) — não precisa configurar nada aqui.
+# Para desligar ou apontar outro arquivo, veja `mcp` no config.full.example.yaml.

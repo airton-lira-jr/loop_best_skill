@@ -12,6 +12,7 @@ from loopforge.config import load_config
 from loopforge.context import build_contexto, resolver_objetivo
 from loopforge.graph import build_graph
 from loopforge.logging import get_logger
+from loopforge.mcp_discovery import materializar_mcp_config
 from loopforge.persistence import gravar_skill
 from loopforge.state import Contexto, LoopState
 
@@ -71,8 +72,14 @@ async def run_loop(
         objetivo=objetivo, contexto=contexto, config=config
     )
 
-    agents = build_agents(config)
-    usa_mcp = config.mcp.config_path is not None
+    # MCP: usa config_path explícito ou auto-descobre os servers do Claude Code.
+    mcp_path, eh_temp = materializar_mcp_config(config)
+    if mcp_path:
+        config.mcp.config_path = mcp_path
+    agents = build_agents(config)  # carrega as toolsets MCP do arquivo resolvido
+    usa_mcp = mcp_path is not None
+    if eh_temp:
+        Path(mcp_path).unlink(missing_ok=True)  # toolsets já carregadas; não precisa mais
 
     with SqliteSaver.from_conn_string(str(runs_dir / "loopforge.sqlite")) as checkpointer:
         graph = build_graph(config, agents=agents, checkpointer=checkpointer)

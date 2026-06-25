@@ -103,12 +103,15 @@ _AGENTES_VALIDOS = {"discovery", "plan", "write", "judge"}
 class McpCfg(BaseModel):
     """Configuração de servidores MCP disponibilizados como tools aos agentes.
 
-    ``config_path`` aponta para um JSON no formato ``mcpServers`` (o mesmo do
-    Claude Desktop/Cursor/Claude Code); cada server vira uma toolset prefixada
-    pelo nome do server. ``agentes`` define quais nós recebem essas tools (o
-    Judge fica de fora por padrão para avaliar sem viés de ferramenta).
+    ``auto`` (default True): descobre os servers MCP da sessão do Claude Code
+    (``~/.claude.json`` global + do projeto, e ``.mcp.json`` local) sem precisar
+    configurar nada. ``config_path`` é um override opcional: aponta para um JSON
+    no formato ``mcpServers`` e desliga a auto-descoberta. Cada server vira uma
+    toolset prefixada pelo nome. ``agentes`` define quais nós recebem as tools
+    (o Judge fica de fora por padrão para avaliar sem viés de ferramenta).
     """
 
+    auto: bool = True
     config_path: str | None = None
     agentes: list[str] = Field(default_factory=lambda: ["discovery", "plan", "write"])
 

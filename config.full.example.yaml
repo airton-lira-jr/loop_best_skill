@@ -81,15 +81,19 @@ contexto:
 
 # -----------------------------------------------------------------------------
 # 6. MCP (opcional) — tools que os agentes chamam AUTONOMAMENTE em runtime
-#    (ex: Confluence, Jira). config_path = JSON formato `mcpServers` (mesmo do
-#    Claude Desktop/Cursor/Claude Code). Suporta ${VAR} e ${VAR:-default}.
+#    (ex: Confluence, Jira).
 #
-#    Exemplo de .mcp.json:
-#      {"mcpServers": {
-#         "confluence": {"command": "npx", "args": ["-y", "mcp-confluence"],
-#                         "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}},
-#         "jira":       {"command": "npx", "args": ["-y", "mcp-jira"]}}}
+#    auto (default true): herda os servers MCP LOCAIS da sua sessão do Claude
+#      Code automaticamente — mescla ~/.claude.json (global + do projeto) e
+#      ./.mcp.json. NÃO precisa configurar nada.
+#    config_path: override opcional. Aponta um JSON formato `mcpServers` e
+#      DESLIGA a auto-descoberta. Suporta ${VAR} e ${VAR:-default}.
+#    agentes: quais nós recebem as tools (Judge fora por padrão).
+#
+#    Limitação: connectors hospedados no claude.ai (OAuth da sessão) NÃO são
+#    herdáveis por um processo separado — só servers locais (stdio/sse/http).
 # -----------------------------------------------------------------------------
 mcp:
-  config_path: null                 # ex: "./.mcp.json"; null => sem MCP
+  auto: true                        # herda os MCP da sessão do Claude Code
+  config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)

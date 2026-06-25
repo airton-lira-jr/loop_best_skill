@@ -111,7 +111,8 @@ contexto:                   # opcional; também passável via flags da CLI
   links: []                 # URLs; o corpo é baixado (httpx) e injetado
 
 mcp:                        # opcional; tools MCP que os agentes chamam ao vivo
-  config_path: null         # JSON formato `mcpServers` (Claude Desktop/Cursor/Claude Code)
+  auto: true                # herda os MCP locais da sessão do Claude Code (default)
+  config_path: null         # override: JSON formato `mcpServers` (desliga o auto)
   agentes: [discovery, plan, write]  # nós que recebem as tools (Judge fora por padrão)
 ```
 
@@ -123,7 +124,7 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
-`mcp.config_path` (opcional), `mcp.agentes`.
+`mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`.
 
 > A validação de pesos é estrita: `scoring.pesos`, `scoring.deterministico` (5 checks) e
 > `scoring.judge` (5 dimensões) **cada grupo deve somar 1.0**, senão o load levanta `ValidationError`.
@@ -145,10 +146,13 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
 - **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/ uma
   SKILL, seu conteúdo é injetado nos prompts de todos os agentes **e** pontuado pelo Judge. Ausente
   (null/omitido/arquivo inexistente) ⇒ a dimensão `aderencia_best_practices` é dropada e renormalizada.
-- **MCP autônomo (opcional)** — com `mcp.config_path` (JSON `mcpServers` padrão), os agentes em
-  `mcp.agentes` recebem toolsets MCP via `load_mcp_toolsets` e as chamam em runtime quando precisam
-  (Confluence/Jira/etc.). O runner abre/fecha as conexões em volta do `ainvoke` (`async with agent`).
-  Judge fica sem tools por padrão. Carga é preguiçosa (não conecta em teste).
+- **MCP autônomo (opcional, auto por padrão)** — com `mcp.auto: true` (default), o runner descobre os
+  servers MCP **locais** da sessão do Claude Code (`mcp_discovery.descobrir_mcp_servers`: mescla
+  `~/.claude.json` global+projeto e `.mcp.json`), grava um JSON temporário (0600) e injeta em
+  `mcp.config_path`. `mcp.config_path` explícito é override e desliga o auto. Os agentes em
+  `mcp.agentes` recebem as toolsets via `load_mcp_toolsets` e as chamam em runtime; o runner abre/fecha
+  as conexões em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do
+  claude.ai (OAuth) NÃO são herdáveis — só servers locais.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate-os como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b) é

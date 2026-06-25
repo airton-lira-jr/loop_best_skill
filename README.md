@@ -93,8 +93,8 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
   quiser recalibrar.
 - `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
   lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
-- `mcp.{config_path,agentes}` — **opcional**. Servidores MCP que os agentes podem chamar ao vivo
-  (Confluence, Jira, etc.) — detalhe na seção "MCP" abaixo.
+- `mcp.{auto,config_path,agentes}` — **opcional**. Por padrão (`auto: true`) herda os servers MCP
+  locais da sua sessão do Claude Code — nada a configurar. Detalhe na seção "MCP" abaixo.
 
 ---
 
@@ -158,46 +158,57 @@ ficam em `.loopforge/runs/` (ignorado pelo git).
 ## MCP — tools que os agentes usam ao vivo (Confluence, Jira, ...)
 
 Diferente de `contexto.links` (que baixa um snapshot estático), o MCP dá aos agentes **tools que eles
-chamam sozinhos durante a execução**, quando julgam necessário. Útil quando o material muda ou exige
-consulta dinâmica (buscar uma página do Confluence, ler um ticket do Jira, etc.).
+chamam sozinhos durante a execução**, quando julgam necessário (buscar uma página do Confluence, ler
+um ticket do Jira, etc.).
 
-### Como ligar
+### Não precisa configurar — herda da sua sessão do Claude Code
 
-1. Tenha um JSON no formato `mcpServers` (o **mesmo** do Claude Desktop / Cursor / Claude Code). Ex.
-   `.mcp.json`:
+Por padrão (`mcp.auto: true`), o loopforge **descobre sozinho** os servers MCP locais que você já tem
+no Claude Code, mesclando (nesta ordem, o último vence):
+
+1. `~/.claude.json` → `mcpServers` (global do usuário)
+2. `~/.claude.json` → `projects[<seu-projeto>].mcpServers` (do projeto)
+3. `./.mcp.json` (arquivo do projeto)
+
+Então, se um server (ex.: `atlassian`/`confluence`/`jira`) já está habilitado no seu Claude Code,
+ele aparece automaticamente para os agentes — sem nada no YAML. Adicione novos com `claude mcp add`.
+
+> **Limitação importante:** connectors **hospedados no claude.ai** (autenticados por OAuth da
+> sessão — ex.: os conectores Atlassian/Slack da interface) **não** ficam nesses arquivos e **não
+> podem ser herdados** por um processo separado como o loopforge. Só servers **locais** (stdio/sse/http
+> definidos em `~/.claude.json`/`.mcp.json`) são reaproveitados. Para Confluence/Jira, garanta que o
+> server está configurado **localmente** (via `claude mcp add`), não só como conector do claude.ai.
+
+### Override (opcional)
+
+```yaml
+mcp:
+  auto: true                          # (default) herda da sessão; false desliga
+  config_path: "./outro.mcp.json"     # aponta um JSON específico e DESLIGA o auto
+  agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
+```
+
+Formato do JSON = `mcpServers` (o mesmo do Claude Desktop/Cursor/Claude Code):
 
 ```json
 {
   "mcpServers": {
-    "confluence": {
-      "command": "npx", "args": ["-y", "mcp-confluence"],
-      "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}
-    },
-    "jira": { "command": "npx", "args": ["-y", "mcp-jira"] }
+    "confluence": {"command": "npx", "args": ["-y", "mcp-confluence"],
+                   "env": {"CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"}},
+    "jira": {"command": "npx", "args": ["-y", "mcp-jira"]}
   }
 }
 ```
 
-2. Aponte o YAML para ele:
-
-```yaml
-mcp:
-  config_path: "./.mcp.json"
-  agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
-```
-
 ### Como funciona
 
-- Cada server vira uma toolset **prefixada pelo nome** (`confluence_*`, `jira_*`) — sem colisão entre
-  servers.
+- Cada server vira uma toolset **prefixada pelo nome** (`confluence_*`, `jira_*`) — sem colisão.
 - Variáveis de ambiente no JSON: `${VAR}` (obrigatória) ou `${VAR:-default}`.
 - Os agentes em `mcp.agentes` recebem as tools e **decidem em runtime** quando chamá-las. O **Judge
   fica de fora por padrão** (avalia a skill sem viés de ferramenta).
-- As conexões MCP são abertas no início do run e fechadas no fim (gerenciadas pelo runner).
-- Sem `mcp.config_path`, nada muda — nenhum agente recebe tools.
-
-> Reaproveite os servers que você **já tem habilitados** no Claude Code: aponte `config_path` para o
-> mesmo JSON de `mcpServers`.
+- As conexões MCP são abertas no início do run e fechadas no fim (gerenciadas pelo runner). Na
+  auto-descoberta, os servers mesclados vão para um arquivo temporário (0600) que é apagado logo
+  após carregar as tools.
 
 ---
 
