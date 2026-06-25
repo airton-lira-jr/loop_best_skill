@@ -55,9 +55,18 @@ variável de ambiente, lida pelo PydanticAI. O loopforge **carrega o `.env` auto
 
 | Provider (no YAML) | Variável | Onde obter |
 |---|---|---|
+| `openrouter:...` (inclui `:free`) | `OPENROUTER_API_KEY` | openrouter.ai/keys |
 | `anthropic:...` | `ANTHROPIC_API_KEY` | console.anthropic.com |
 | `google-gla:...` | `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) | aistudio.google.com/apikey |
 | `openai:...` | `OPENAI_API_KEY` | platform.openai.com/api-keys |
+
+**OpenRouter (modelos gratuitos).** Formato: `model: openrouter:<id>`, ex. `openrouter:qwen/qwen3-coder:free`
+(o `:free` faz parte do id; veja os ids atuais em openrouter.ai/models). Uma só `OPENROUTER_API_KEY`
+serve para todos os agentes. Dois cuidados com modelos `:free`:
+- **Saída tipada:** os agentes usam *structured output* (via tool-calling). Escolha modelos free que
+  suportem function-calling/tools, senão a saída tipada falha. Modelos de raciocínio puro costumam não servir.
+- **Rate limit:** os `:free` têm limites agressivos (req/min e por dia); um loop com várias iterações
+  pode esbarrar. Reduza `loop.max_iteracoes` se necessário.
 
 > Estas são **API keys** (cobrança por token), **não** a assinatura Pro/Max do claude.ai/Claude Code —
 > a assinatura não dá acesso à API. São billings separados.
