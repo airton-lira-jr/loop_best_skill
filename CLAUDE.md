@@ -1,17 +1,17 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guia Claude Code (claude.ai/code) para trabalho neste repo.
 
-> **Status do repositório:** implementado (tasks 1-13 do plano em `docs/superpowers/plans/`). A CLI
-> `loopforge run`/`validate`, o grafo LangGraph de 4 nós, o scoring híbrido e a suíte de testes já
-> existem. Mantenha este arquivo sincronizado com a estrutura real ao evoluir o código.
+> **Status do repositório:** implementado (tasks 1-13 do plano em `docs/superpowers/plans/`). CLI
+> `loopforge run`/`validate`, grafo LangGraph 4 nós, scoring híbrido, suíte de testes já
+> existem. Mantenha arquivo sincronizado com estrutura real ao evoluir código.
 
 ## Propósito
 
-**Loop Engineer** — um conceito de orquestração multi-agente onde cada agente de IA roda em uma
-**LLM diferente** e desempenha um papel especializado dentro de um loop iterativo de refinamento.
-O objetivo final do loop é produzir uma **SKILL** (artefato de implantação) que atenda a um objetivo
-definido pelo usuário.
+**Loop Engineer** — orquestração multi-agente onde cada agente IA roda em
+**LLM diferente**, papel especializado dentro de loop iterativo de refinamento.
+Objetivo do loop: produzir **SKILL** (artefato de implantação) que atenda objetivo
+do usuário.
 
 ### O ciclo (loop)
 
@@ -36,36 +36,36 @@ Objetivo do usuário (YAML)
 ```
 
 - **Discovery Agent** — propõe N abordagens candidatas (`DiscoveryReport` com `Abordagem[]` +
-  recomendada + justificativa) e recomenda a melhor. Roda só na 1ª iteração.
-- **Plan Agent** — escolhe a melhor abordagem e elabora a spec da SKILL (`SkillPlan`). É o nó que itera,
-  incorporando o feedback do Judge.
-- **Write Agent** — escreve o `SKILL.md` (frontmatter + corpo) e os arquivos referenciados
+  recomendada + justificativa), recomenda melhor. Roda só na 1ª iteração.
+- **Plan Agent** — escolhe melhor abordagem, elabora spec da SKILL (`SkillPlan`). Nó que itera,
+  incorpora feedback do Judge.
+- **Write Agent** — escreve `SKILL.md` (frontmatter + corpo) e arquivos referenciados
   (`SkillArtifact`) a partir da spec.
-- **Judge Agent** — avalia o artefato e produz um veredito estruturado (`JudgeVerdict`): nota 0..1 por
-  dimensão + feedback acionável. É essa métrica que alimenta a decisão de loop.
-- O loop **reitera** enquanto o score ficar abaixo do `score_minimo`, respeitando o teto
-  `max_iteracoes` e a paciência anti-estagnação (`no_progress_paciencia`).
+- **Judge Agent** — avalia artefato, produz veredito estruturado (`JudgeVerdict`): nota 0..1 por
+  dimensão + feedback acionável. Essa métrica alimenta decisão de loop.
+- Loop **reitera** enquanto score abaixo do `score_minimo`, respeita teto
+  `max_iteracoes` e paciência anti-estagnação (`no_progress_paciencia`).
 
 ## Stack
 
 | Camada | Tecnologia | Papel |
 |--------|-----------|-------|
-| Gerenciador de pacotes | **uv** | Ambiente, dependências e execução (`uv sync`, `uv run`) |
-| Agentes de IA | **PydanticAI** | Definição de cada agente, *tools* e integração **MCP** (todo o harness possível) |
-| Orquestração | **LangGraph** | Grafo Discovery → Plan → Write → Judge, com aresta de loop condicional e checkpointer SQLite (memory spine) |
-| Interface | **CLI `loopforge`** (Typer; documentada no `README.md`) | Comandos `run`/`validate` e recursos extras (links, diretórios de docs) como contexto |
-| Configuração | **YAML** | Arquivo lido antes da execução (LLM de cada agente, objetivo da SKILL, loop e pesos do scoring) |
-| Observabilidade | Logs estruturados (**structlog + rich**) + **LangGraph Studio** (`langgraph dev`) | Acompanhar a execução em tempo real |
+| Gerenciador de pacotes | **uv** | Ambiente, dependências, execução (`uv sync`, `uv run`) |
+| Agentes de IA | **PydanticAI** | Define cada agente, *tools*, integração **MCP** (todo harness possível) |
+| Orquestração | **LangGraph** | Grafo Discovery → Plan → Write → Judge, aresta de loop condicional + checkpointer SQLite (memory spine) |
+| Interface | **CLI `loopforge`** (Typer; documentada no `README.md`) | Comandos `run`/`validate` + recursos extras (links, diretórios de docs) como contexto |
+| Configuração | **YAML** | Arquivo lido antes da execução (LLM de cada agente, objetivo da SKILL, loop, pesos do scoring) |
+| Observabilidade | Logs estruturados (**structlog + rich**) + **LangGraph Studio** (`langgraph dev`) | Acompanha execução em tempo real |
 
 ## Arquivo de configuração YAML
 
-A aplicação **lê o YAML antes da execução**. Campos obrigatórios:
+Aplicação **lê YAML antes da execução**. Campos obrigatórios:
 
-1. **LLM de cada agente** — `discovery`, `plan`, `write`, `judge` (cada um pode ser uma LLM distinta).
-2. **Objetivo da SKILL** — o alvo que o loop deve atingir.
+1. **LLM de cada agente** — `discovery`, `plan`, `write`, `judge` (cada um pode ser LLM distinta).
+2. **Objetivo da SKILL** — alvo que loop deve atingir.
 
-Os demais campos têm defaults (loop e pesos do scoring). Esquema oficial (formato de `model` segue o
-padrão PydanticAI `provider:modelo`). Veja `config.example.yaml` para a versão anotada completa:
+Demais campos têm defaults (loop e pesos do scoring). Esquema oficial (formato de `model` segue
+padrão PydanticAI `provider:modelo`). Veja `config.example.yaml` para versão anotada completa:
 
 ```yaml
 agents:
@@ -116,9 +116,14 @@ mcp:                        # opcional; tools MCP que os agentes chamam ao vivo
   agentes: [discovery, plan, write]  # nós que recebem as tools (Judge fora por padrão)
 ```
 
-> **Anti-viés (default):** `agents.judge.model` deve usar um provider **≠** `agents.write.model`,
-> para o avaliador não ser cúmplice de quem escreveu. Os 4 nós do grafo são `discovery`, `plan`,
+> **Anti-viés (default):** `agents.judge.model` deve usar provider **≠** `agents.write.model`,
+> p/ avaliador não ser cúmplice de quem escreveu. 4 nós do grafo: `discovery`, `plan`,
 > `write`, `judge`.
+
+> **Chaves de API:** NÃO vão no YAML. PydanticAI lê do ambiente
+> (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OPENAI_API_KEY`). `run_loop` carrega `.env`
+> via `loopforge.env.carregar_env` (override=False; shell vence). São API keys (cobrança por token),
+> não a assinatura Pro/Max.
 
 Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`,
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
@@ -126,45 +131,45 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
 `mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`.
 
-> A validação de pesos é estrita: `scoring.pesos`, `scoring.deterministico` (5 checks) e
-> `scoring.judge` (5 dimensões) **cada grupo deve somar 1.0**, senão o load levanta `ValidationError`.
+> Validação de pesos estrita: `scoring.pesos`, `scoring.deterministico` (5 checks),
+> `scoring.judge` (5 dimensões) — **cada grupo deve somar 1.0**, senão load levanta `ValidationError`.
 
-> Cada agente usa uma LLM **diferente** por design — isso é central ao conceito. Não force todos
-> os agentes para o mesmo provider/modelo sem instrução explícita.
+> Cada agente usa LLM **diferente** por design — central ao conceito. Não force todos
+> agentes p/ mesmo provider/modelo sem instrução explícita.
 
 ## Conceitos centrais (ao implementar, respeitar)
 
-- **Papéis isolados por LLM** — Discovery, Plan, Write e Judge são agentes PydanticAI separados, cada
-  um com seu modelo configurado via YAML. Evite acoplar lógica entre eles fora do grafo.
+- **Papéis isolados por LLM** — Discovery, Plan, Write, Judge são agentes PydanticAI separados, cada
+  um com modelo configurado via YAML. Evite acoplar lógica entre eles fora do grafo.
 - **Loop com saída garantida** — `decidir_loop` (em `graph.py`) checa **score** (`loop.score_minimo`),
   **teto de iterações** (`loop.max_iteracoes`) **e** estagnação (`loop.no_progress_paciencia`). Sai do
   loop SEMPRE que qualquer um for atingido: `aprovado`, `max_iter` ou `estagnado`.
 - **Métrica híbrida** — score composto: `score_final = pesos.deterministico * det + pesos.judge * jdg`.
-  A camada determinística roda checks programáticos sobre o `SkillArtifact`; a camada judge é a rubrica
-  do Judge (saída tipada `JudgeVerdict`). Sem `best_practices`, a dimensão `aderencia_best_practices` é
-  dropada e os pesos do judge são renormalizados.
-- **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/ uma
-  SKILL, seu conteúdo é injetado nos prompts de todos os agentes **e** pontuado pelo Judge. Ausente
-  (null/omitido/arquivo inexistente) ⇒ a dimensão `aderencia_best_practices` é dropada e renormalizada.
-- **MCP autônomo (opcional, auto por padrão)** — com `mcp.auto: true` (default), o runner descobre os
+  Camada determinística roda checks programáticos sobre `SkillArtifact`; camada judge é rubrica
+  do Judge (saída tipada `JudgeVerdict`). Sem `best_practices`, dimensão `aderencia_best_practices`
+  dropa, pesos do judge renormalizam.
+- **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/
+  SKILL, conteúdo injeta nos prompts de todos agentes **e** Judge pontua. Ausente
+  (null/omitido/arquivo inexistente) ⇒ dimensão `aderencia_best_practices` dropa, renormaliza.
+- **MCP autônomo (opcional, auto por padrão)** — com `mcp.auto: true` (default), runner descobre
   servers MCP **locais** da sessão do Claude Code (`mcp_discovery.descobrir_mcp_servers`: mescla
-  `~/.claude.json` global+projeto e `.mcp.json`), grava um JSON temporário (0600) e injeta em
-  `mcp.config_path`. `mcp.config_path` explícito é override e desliga o auto. Os agentes em
-  `mcp.agentes` recebem as toolsets via `load_mcp_toolsets` e as chamam em runtime; o runner abre/fecha
-  as conexões em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do
-  claude.ai (OAuth) NÃO são herdáveis — só servers locais.
+  `~/.claude.json` global+projeto e `.mcp.json`), grava JSON temporário (0600), injeta em
+  `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
+  `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha
+  conexões em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do
+  claude.ai (OAuth) NÃO herdáveis — só servers locais.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
-  estendem `contexto.docs`/`contexto.links` do YAML. Trate-os como entrada, não hardcode.
-- **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b) é
-  inspecionável no LangGraph Studio (`langgraph.json` → `graph_app.py:graph`). O checkpointer SQLite em
-  `.loopforge/runs/` serve de memory spine e time-travel. Não remova/silencie instrumentação ao refatorar.
+  estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
+- **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)
+  inspecionável no LangGraph Studio (`langgraph.json` → `graph_app.py:graph`). Checkpointer SQLite em
+  `.loopforge/runs/` serve de memory spine + time-travel. Não remova/silencie instrumentação ao refatorar.
 - **Agentes nunca chamam API real em teste** — usar `TestModel`/`FunctionModel` do PydanticAI via
   `agent.override(model=...)`.
 
 ## Comandos
 
-> A CLI `loopforge` é **documentada no `README.md`** (fonte de verdade dos comandos e flags).
-> O grafo p/ o Studio fica em `langgraph.json`.
+> CLI `loopforge` **documentada no `README.md`** (fonte de verdade dos comandos e flags).
+> Grafo p/ Studio fica em `langgraph.json`.
 
 ```bash
 # Setup do ambiente (uv lê o pyproject.toml e resolve as dependências):
@@ -191,4 +196,4 @@ uv add <pacote>
 uv remove <pacote>
 ```
 
-Ao mudar comandos ou flags, **atualize esta seção e o `README.md` juntos** — eles não devem divergir.
+Ao mudar comandos ou flags, **atualize esta seção e o `README.md` juntos** — não devem divergir.

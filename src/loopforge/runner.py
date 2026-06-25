@@ -10,6 +10,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from loopforge.agents.builder import AgentsBundle, build_agents
 from loopforge.config import load_config
 from loopforge.context import build_contexto, resolver_objetivo
+from loopforge.env import carregar_env
 from loopforge.graph import build_graph
 from loopforge.logging import get_logger
 from loopforge.mcp_discovery import materializar_mcp_config
@@ -61,6 +62,7 @@ async def run_loop(
     Returns:
         Estado final do loop (status aprovado/max_iter/estagnado).
     """
+    carregar_env()  # lê .env (chaves de API) antes de resolver os modelos
     config = load_config(config_path)
     contexto: Contexto = build_contexto(config, extra_docs, extra_links)
     objetivo = resolver_objetivo(config.skill.objetivo)

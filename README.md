@@ -44,10 +44,25 @@ abordagem pro objetivo é a interação entre os agentes**, não parâmetros man
 ```bash
 uv sync                 # resolve dependências do pyproject.toml
 cp config.example.yaml config.yaml
-# exporte as chaves dos providers que você usa:
-export ANTHROPIC_API_KEY=...
-export GEMINI_API_KEY=...     # (ou GOOGLE_API_KEY, conforme o provider)
+cp .env.example .env     # preencha as chaves dos providers que você usa
 ```
+
+### Chaves de API (autenticação dos modelos)
+
+As chaves **não vão no YAML** — o YAML só escolhe o modelo (`provider:modelo`). A autenticação é por
+variável de ambiente, lida pelo PydanticAI. O loopforge **carrega o `.env` automaticamente** ao rodar
+(`.env` está no `.gitignore`); variáveis já exportadas no shell têm precedência.
+
+| Provider (no YAML) | Variável | Onde obter |
+|---|---|---|
+| `anthropic:...` | `ANTHROPIC_API_KEY` | console.anthropic.com |
+| `google-gla:...` | `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) | aistudio.google.com/apikey |
+| `openai:...` | `OPENAI_API_KEY` | platform.openai.com/api-keys |
+
+> Estas são **API keys** (cobrança por token), **não** a assinatura Pro/Max do claude.ai/Claude Code —
+> a assinatura não dá acesso à API. São billings separados.
+
+Alternativa ao `.env`: exportar no shell (`export ANTHROPIC_API_KEY=...`).
 
 ## Uso
 
