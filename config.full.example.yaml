@@ -85,7 +85,12 @@ contexto:
 #
 #    auto (default true): herda os servers MCP LOCAIS da sua sessão do Claude
 #      Code automaticamente — mescla ~/.claude.json (global + do projeto) e
-#      ./.mcp.json. NÃO precisa configurar nada.
+#      ./.mcp.json. NÃO precisa configurar nada. Cada server é testado (probe);
+#      os que falharem ao conectar são DESCARTADOS (1 server quebrado nunca
+#      derruba o loop).
+#    incluir: allowlist de nomes de server (null = todos). Use p/ pegar SÓ os
+#      relevantes (ex: [openmetadata]) e evitar puxar dev-tooling irrelevante.
+#    excluir: denylist de nomes de server a ignorar.
 #    config_path: override opcional. Aponta um JSON formato `mcpServers` e
 #      DESLIGA a auto-descoberta. Suporta ${VAR} e ${VAR:-default}.
 #    agentes: quais nós recebem as tools (Judge fora por padrão).
@@ -95,5 +100,7 @@ contexto:
 # -----------------------------------------------------------------------------
 mcp:
   auto: true                        # herda os MCP da sessão do Claude Code
+  incluir: null                     # allowlist: ex ["openmetadata"]; null = todos
+  excluir: []                       # denylist: ex ["tokensave", "token-savior"]
   config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)

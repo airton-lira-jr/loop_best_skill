@@ -117,8 +117,9 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
   quiser recalibrar.
 - `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
   lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
-- `mcp.{auto,config_path,agentes}` — **opcional**. Por padrão (`auto: true`) herda os servers MCP
-  locais da sua sessão do Claude Code — nada a configurar. Detalhe na seção "MCP" abaixo.
+- `mcp.{auto,incluir,excluir,config_path,agentes}` — **opcional**. Por padrão (`auto: true`) herda os
+  servers MCP locais da sua sessão do Claude Code (com probe que descarta os quebrados) — nada a
+  configurar. Detalhe na seção "MCP" abaixo.
 
 ---
 
@@ -203,12 +204,20 @@ ele aparece automaticamente para os agentes — sem nada no YAML. Adicione novos
 > definidos em `~/.claude.json`/`.mcp.json`) são reaproveitados. Para Confluence/Jira, garanta que o
 > server está configurado **localmente** (via `claude mcp add`), não só como conector do claude.ai.
 
-### Override (opcional)
+### Resiliência e escopo
+
+- **Probe:** cada server é testado ao iniciar; os que falham ao conectar (binário ausente, init
+  quebrado — ex.: um server que precisa de um índice que não existe neste projeto) são **descartados
+  com um warning**. Um server quebrado **nunca derruba** o loop.
+- **Escopo:** por padrão o auto puxa *todos* os servers locais — inclusive dev-tooling irrelevante,
+  que ainda floda modelos fracos com dezenas de tools. Use `incluir`/`excluir` para focar:
 
 ```yaml
 mcp:
   auto: true                          # (default) herda da sessão; false desliga
-  config_path: "./outro.mcp.json"     # aponta um JSON específico e DESLIGA o auto
+  incluir: ["openmetadata"]           # allowlist (null = todos)
+  excluir: ["tokensave"]              # denylist
+  config_path: "./outro.mcp.json"     # override: aponta um JSON e DESLIGA o auto
   agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
 ```
 

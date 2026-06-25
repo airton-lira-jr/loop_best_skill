@@ -114,6 +114,8 @@ class McpCfg(BaseModel):
     auto: bool = True
     config_path: str | None = None
     agentes: list[str] = Field(default_factory=lambda: ["discovery", "plan", "write"])
+    incluir: list[str] | None = None  # allowlist de nomes de server (None = todos)
+    excluir: list[str] = Field(default_factory=list)  # denylist de nomes de server
 
     @model_validator(mode="after")
     def _checa(self) -> McpCfg:

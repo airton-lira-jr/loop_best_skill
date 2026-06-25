@@ -112,6 +112,8 @@ contexto:                   # opcional; também passável via flags da CLI
 
 mcp:                        # opcional; tools MCP que os agentes chamam ao vivo
   auto: true                # herda os MCP locais da sessão do Claude Code (default)
+  incluir: null             # allowlist de servers (null = todos); excluir = denylist
+  excluir: []
   config_path: null         # override: JSON formato `mcpServers` (desliga o auto)
   agentes: [discovery, plan, write]  # nós que recebem as tools (Judge fora por padrão)
 ```
@@ -151,13 +153,14 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
 - **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/
   SKILL, conteúdo injeta nos prompts de todos agentes **e** Judge pontua. Ausente
   (null/omitido/arquivo inexistente) ⇒ dimensão `aderencia_best_practices` dropa, renormaliza.
-- **MCP autônomo (opcional, auto por padrão)** — com `mcp.auto: true` (default), runner descobre
-  servers MCP **locais** da sessão do Claude Code (`mcp_discovery.descobrir_mcp_servers`: mescla
-  `~/.claude.json` global+projeto e `.mcp.json`), grava JSON temporário (0600), injeta em
-  `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
-  `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha
-  conexões em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do
-  claude.ai (OAuth) NÃO herdáveis — só servers locais.
+- **MCP autônomo (opcional, auto por padrão)** — `mcp_discovery.preparar_mcp_config` (async): descobre
+  servers MCP **locais** da sessão (`descobrir_mcp_servers`: mescla `~/.claude.json` global+projeto e
+  `.mcp.json`), aplica `incluir`/`excluir`, faz **probe** de cada um (conecta isolado; os que falham são
+  **descartados** — server quebrado nunca derruba o loop), grava JSON temporário (0600) só com saudáveis,
+  injeta em `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
+  `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha conexões
+  em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do claude.ai
+  (OAuth) NÃO herdáveis — só servers locais.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)

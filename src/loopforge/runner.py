@@ -13,7 +13,7 @@ from loopforge.context import build_contexto, resolver_objetivo
 from loopforge.env import carregar_env
 from loopforge.graph import build_graph
 from loopforge.logging import get_logger
-from loopforge.mcp_discovery import materializar_mcp_config
+from loopforge.mcp_discovery import preparar_mcp_config
 from loopforge.persistence import gravar_skill
 from loopforge.state import Contexto, LoopState
 
@@ -74,8 +74,9 @@ async def run_loop(
         objetivo=objetivo, contexto=contexto, config=config
     )
 
-    # MCP: usa config_path explícito ou auto-descobre os servers do Claude Code.
-    mcp_path, eh_temp = materializar_mcp_config(config)
+    # MCP: usa config_path explícito ou auto-descobre os servers do Claude Code
+    # (com filtro incluir/excluir e probe que descarta servers quebrados).
+    mcp_path, eh_temp = await preparar_mcp_config(config)
     if mcp_path:
         config.mcp.config_path = mcp_path
     agents = build_agents(config)  # carrega as toolsets MCP do arquivo resolvido

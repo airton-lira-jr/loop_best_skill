@@ -1,0 +1,33 @@
+# =============================================================================
+# Loop Engineer (loopforge) — config MÍNIMO. Copie p/ config.yaml e ajuste.
+# =============================================================================
+# Só o essencial. `loop` e `scoring` têm defaults sensatos (não precisa definir).
+# Para ver TODOS os campos e ajustar pesos/iterações: config.full.example.yaml.
+# Valide com: uv run loopforge validate          (lê config.yaml por padrão)
+# =============================================================================
+
+# LLM de cada nó. Anti-viés: o Judge usa provider/modelo != do Write.
+# Pode usar OpenRouter (inclui modelos :free): model: openrouter:qwen/qwen3-coder:free
+agents:
+  discovery: {model: google-gla:gemini-2.0-flash}
+  plan:      {model: anthropic:claude-opus-4-8}
+  write:     {model: anthropic:claude-opus-4-8}
+  judge:     {model: anthropic:claude-sonnet-4.6}
+
+skill:
+  # `objetivo` aceita TEXTO direto OU um PATH (.md, ou um diretório de .md).
+  # Para objetivos longos, prefira o arquivo — sem dor de quebra de linha no YAML.
+  objetivo: "./objetivo"          # ex: "./objetivo/goal.md"  ou  "Skill que faz X"
+  output_dir: "./skills"          # onde a SKILL final é gravada
+  # best_practices: "./skills/asaas-base/SKILL.md"   # opcional (regras Asaas)
+
+# Fontes de referência (conteúdo é lido/baixado e injetado nos agentes).
+contexto:
+  docs:  []     # arquivos OU diretórios. ex: ["./docs"]
+  links: []     # URLs. ex: ["https://exemplo.com/guia"]
+
+# MCP: por padrão os agentes JÁ herdam os servers MCP locais da sua sessão do
+# Claude Code (~/.claude.json + .mcp.json), com probe que descarta os quebrados.
+# Não precisa configurar nada. Para escopar/desligar, veja config.full.example.yaml.
+# mcp:
+#   incluir: [openmetadata]   # pegue só os relevantes (evita flood em modelos free)
