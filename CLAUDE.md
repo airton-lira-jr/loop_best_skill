@@ -51,7 +51,7 @@ Objetivo do usuário (YAML)
 | Camada | Tecnologia | Papel |
 |--------|-----------|-------|
 | Gerenciador de pacotes | **uv** | Ambiente, dependências, execução (`uv sync`, `uv run`) |
-| Agentes de IA | **PydanticAI** | Define cada agente, *tools*, integração **MCP** (todo harness possível) |
+| Agentes de IA | **PydanticAI** | Define cada agente, *tools*, integração **MCP** + **web search** (todo harness possível) |
 | Orquestração | **LangGraph** | Grafo Discovery → Plan → Write → Judge, aresta de loop condicional + checkpointer SQLite (memory spine) |
 | Interface | **CLI `loopforge`** (Typer; documentada no `README.md`) | Comandos `run`/`validate` + recursos extras (links, diretórios de docs) como contexto |
 | Configuração | **YAML** | Arquivo lido antes da execução (LLM de cada agente, objetivo da SKILL, loop, pesos do scoring) |
@@ -116,6 +116,12 @@ mcp:                        # opcional; tools MCP que os agentes chamam ao vivo
   excluir: []
   config_path: null         # override: JSON formato `mcpServers` (desliga o auto)
   agentes: [discovery, plan, write]  # nós que recebem as tools (Judge fora por padrão)
+
+websearch:                  # opcional; tool de busca na web dada aos agentes
+  habilitado: true          # default true
+  provider: duckduckgo      # duckduckgo (sem API key) | tavily (lê TAVILY_API_KEY)
+  agentes: [discovery, plan, write, judge]  # nós que buscam na web
+  max_results: 5            # teto por busca (1..20)
 ```
 
 > **Anti-viés (default):** `agents.judge.model` deve usar provider **≠** `agents.write.model`,
@@ -131,7 +137,8 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
-`mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`.
+`mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`,
+`websearch.{habilitado,provider,agentes,max_results}`.
 
 > Validação de pesos estrita: `scoring.pesos`, `scoring.deterministico` (5 checks),
 > `scoring.judge` (5 dimensões) — **cada grupo deve somar 1.0**, senão load levanta `ValidationError`.
@@ -170,6 +177,12 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
   filtro **fail-closed** — tool de escrita, execução ou de nome ambíguo é removida e o LLM nem a vê
   (classificação por verbo no nome, snake+camelCase, + annotation `readOnlyHint`). Única escrita do
   sistema = a SKILL gerada, gravada localmente por `gravar_skill`. Não é configurável; não afrouxe.
+- **Web search (atualidade)** — `websearch.construir_websearch_tools` dá aos agentes (os listados em
+  `websearch.agentes`) uma tool de busca na internet (`duckduckgo_search` ou `tavily_search`) p/
+  fundamentar a skill em conteúdo recente, somado ao raciocínio da LLM. Wireada em `build_agents` via
+  `tools=`. Default: DuckDuckGo (sem key), 4 agentes. **Cuidado em teste:** `TestModel` chama TODA tool
+  registrada — então nos testes que rodam agentes via TestModel, ponha `websearch.habilitado: False`
+  senão dispara request real à rede. Tavily degrada suave (sem key/sem dep `tavily-python` ⇒ tool omitida).
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)

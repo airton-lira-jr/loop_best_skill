@@ -111,3 +111,18 @@ mcp:
   excluir: []                       # denylist: ex ["tokensave", "token-savior"]
   config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)
+
+# -----------------------------------------------------------------------------
+# 7. WEB SEARCH (opcional) — tool de busca na internet dada aos agentes p/ puxar
+#    conteúdo ATUALIZADO e fundamentar a skill, junto com o raciocínio da LLM.
+#      provider: "duckduckgo" (sem API key, usa o pacote ddgs) ou "tavily" (lê
+#        TAVILY_API_KEY do ambiente; sem a key a tool é omitida com warning).
+#      habilitado: false desliga totalmente.
+#      agentes: quais nós recebem a tool (subconjunto de discovery/plan/write/judge).
+#      max_results: teto de resultados por busca (1..20).
+# -----------------------------------------------------------------------------
+websearch:
+  habilitado: true
+  provider: duckduckgo                       # duckduckgo | tavily
+  agentes: [discovery, plan, write, judge]   # quais nós buscam na web
+  max_results: 5

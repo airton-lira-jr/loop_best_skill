@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -128,6 +129,36 @@ class McpCfg(BaseModel):
         return self
 
 
+class WebsearchCfg(BaseModel):
+    """Configuração da tool de web search dada aos agentes.
+
+    Dá aos agentes uma tool para buscar conteúdo ATUALIZADO na internet durante
+    o loop (best practices recentes, libs novas, etc.) — complementa o raciocínio
+    da LLM de cada agente. ``provider`` escolhe o backend (``duckduckgo``, sem API
+    key; ou ``tavily``, que lê ``TAVILY_API_KEY`` do ambiente). ``agentes`` define
+    quais nós recebem a tool; ``max_results`` o teto por busca.
+
+    Default: DuckDuckGo, ligado para os 4 agentes.
+    """
+
+    habilitado: bool = True
+    provider: Literal["duckduckgo", "tavily"] = "duckduckgo"
+    agentes: list[str] = Field(
+        default_factory=lambda: ["discovery", "plan", "write", "judge"]
+    )
+    max_results: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def _checa(self) -> WebsearchCfg:
+        invalidos = sorted(set(self.agentes) - _AGENTES_VALIDOS)
+        if invalidos:
+            raise ValueError(
+                f"websearch.agentes inválidos: {invalidos}. Use um subconjunto de "
+                f"{sorted(_AGENTES_VALIDOS)}."
+            )
+        return self
+
+
 class AppConfig(BaseModel):
     """Root configuration schema for loopforge application."""
     agents: AgentsCfg
@@ -136,6 +167,7 @@ class AppConfig(BaseModel):
     scoring: ScoringCfg = Field(default_factory=ScoringCfg)
     contexto: ContextoCfg = Field(default_factory=ContextoCfg)
     mcp: McpCfg = Field(default_factory=McpCfg)
+    websearch: WebsearchCfg = Field(default_factory=WebsearchCfg)
 
 
 def load_config(path: str | Path) -> AppConfig:

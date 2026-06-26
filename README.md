@@ -5,8 +5,8 @@ de alta qualidade a partir de um objetivo declarado em YAML. Os agentes pesquisa
 e **julgam** a skill num **loop iterativo** que só termina quando a métrica de qualidade é atingida —
 ou quando o teto de iterações / a estagnação são alcançados.
 
-Construído com **PydanticAI** (agentes + tools + MCP), **LangGraph** (grafo + loop condicional),
-**uv** (ambiente) e observabilidade dupla: **logs estruturados** + **LangGraph Studio**.
+Construído com **PydanticAI** (agentes + tools + MCP + **web search**), **LangGraph** (grafo + loop
+condicional), **uv** (ambiente) e observabilidade dupla: **logs estruturados** + **LangGraph Studio**.
 
 ---
 
@@ -120,6 +120,9 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
 - `mcp.{auto,incluir,excluir,config_path,agentes}` — **opcional**. Por padrão (`auto: true`) herda os
   servers MCP locais da sua sessão do Claude Code (com probe que descarta os quebrados) — nada a
   configurar. Detalhe na seção "MCP" abaixo.
+- `websearch.{habilitado,provider,agentes,max_results}` — **opcional**. Por padrão **ligado**
+  (DuckDuckGo, sem API key) para os 4 agentes: eles buscam conteúdo atualizado na internet durante o
+  loop. Detalhe na seção "Web search" abaixo.
 
 ---
 
@@ -256,6 +259,36 @@ Formato do JSON = `mcpServers` (o mesmo do Claude Desktop/Cursor/Claude Code):
 - As conexões MCP são abertas no início do run e fechadas no fim (gerenciadas pelo runner). Na
   auto-descoberta, os servers mesclados vão para um arquivo temporário (0600) que é apagado logo
   após carregar as tools.
+
+---
+
+## Web search — agentes puxam conteúdo atual da internet
+
+Cada agente combina o **raciocínio da sua LLM** com **busca na web** para fundamentar a skill em
+conteúdo recente (libs novas, APIs atuais, best practices do momento) em vez de só confiar na memória
+do modelo. É uma tool que o agente chama sozinho quando precisa — igual ao MCP, mas para a internet
+aberta (não exige login/credencial de serviço).
+
+Por padrão vem **ligado** com **DuckDuckGo** (sem API key) para os 4 agentes:
+
+```yaml
+websearch:
+  habilitado: true
+  provider: duckduckgo                       # duckduckgo (sem key) | tavily (TAVILY_API_KEY)
+  agentes: [discovery, plan, write, judge]   # quais nós buscam na web
+  max_results: 5                             # teto de resultados por busca (1..20)
+```
+
+- **DuckDuckGo** (default): zero config, sem API key — combina com modelos free. Qualidade média e
+  pode rate-limitar em rajada.
+- **Tavily**: otimizado para agentes, resultados mais limpos. Precisa de `TAVILY_API_KEY` no ambiente
+  (free tier ~1000/mês) e da dep `tavily-python`. Sem a key **ou** sem a dep, a tool é **omitida com
+  warning** — o loop segue só com o raciocínio (degrada suave, não quebra).
+- **Escopo por agente:** restrinja com `agentes: [...]` (ex.: só `[discovery]` para concentrar a
+  pesquisa na descoberta). `habilitado: false` desliga tudo.
+
+> Como cada agente usa uma LLM diferente, a qualidade da busca + síntese varia conforme o modelo do nó.
+> Modelos que não suportam tool-calling não conseguem chamar a tool — nesses, o agente ignora o web search.
 
 ---
 

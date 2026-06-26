@@ -17,6 +17,8 @@ CFG = AppConfig.model_validate({
     },
     "skill": {"objetivo": "x"},
     "loop": {"max_iteracoes": 3, "score_minimo": 0.8, "no_progress_paciencia": 2},
+    # websearch off: TestModel chamaria a tool de busca de verdade (rede) no run.
+    "websearch": {"habilitado": False},
 })
 
 

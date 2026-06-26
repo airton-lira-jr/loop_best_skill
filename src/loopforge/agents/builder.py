@@ -12,6 +12,7 @@ from loopforge.agents.prompts import DISCOVERY_SYS, JUDGE_SYS, PLAN_SYS, WRITE_S
 from loopforge.config import AppConfig
 from loopforge.mcp_readonly import filtro_readonly
 from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
+from loopforge.websearch import construir_websearch_tools
 
 
 @dataclass
@@ -76,6 +77,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             config.agents.discovery.model,
             system_prompt=DISCOVERY_SYS,
             output_type=DiscoveryReport,
+            tools=construir_websearch_tools(config, "discovery"),
             toolsets=_toolsets_para(config, "discovery"),
             defer_model_check=True,
         ),
@@ -83,6 +85,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             config.agents.plan.model,
             system_prompt=PLAN_SYS,
             output_type=SkillPlan,
+            tools=construir_websearch_tools(config, "plan"),
             toolsets=_toolsets_para(config, "plan"),
             defer_model_check=True,
         ),
@@ -90,6 +93,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             config.agents.write.model,
             system_prompt=WRITE_SYS,
             output_type=SkillArtifact,
+            tools=construir_websearch_tools(config, "write"),
             toolsets=_toolsets_para(config, "write"),
             defer_model_check=True,
         ),
@@ -97,6 +101,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             config.agents.judge.model,
             system_prompt=JUDGE_SYS,
             output_type=JudgeVerdict,
+            tools=construir_websearch_tools(config, "judge"),
             toolsets=_toolsets_para(config, "judge"),
             defer_model_check=True,
         ),

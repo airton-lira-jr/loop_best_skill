@@ -32,3 +32,9 @@ contexto:
 # serviços externos, nunca escreve). Para escopar/desligar, veja config.full.example.yaml.
 # mcp:
 #   incluir: ["openmetadata"]   # pegue só os relevantes (evita flood em modelos free)
+
+# Web search: por padrão LIGADO (DuckDuckGo, sem API key) para os 4 agentes —
+# eles buscam conteúdo atualizado na internet durante o loop. Para trocar p/
+# Tavily, escopar agentes ou desligar, veja config.full.example.yaml.
+# websearch:
+#   provider: duckduckgo   # ou tavily (precisa TAVILY_API_KEY)

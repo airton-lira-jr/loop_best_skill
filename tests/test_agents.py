@@ -16,6 +16,9 @@ CFG = AppConfig.model_validate({
         "judge": {"model": "google-gla:gemini-2.0-flash"},
     },
     "skill": {"objetivo": "x"},
+    # websearch off: TestModel chama toda tool automaticamente; com a tool de
+    # busca ligada isso viraria request real à rede e quebraria a hermeticidade.
+    "websearch": {"habilitado": False},
 })
 
 
@@ -81,8 +84,27 @@ def test_mcp_toolsets_so_nos_agentes_configurados(tmp_path):
         },
         "skill": {"objetivo": "x"},
         "mcp": {"config_path": str(mcp_json), "agentes": ["discovery"]},
+        "websearch": {"habilitado": False},
     })
     bundle = build_agents(cfg)
     assert len(bundle.discovery._user_toolsets) == 1   # dummy server
     assert bundle.plan._user_toolsets == []             # fora de mcp.agentes
     assert bundle.judge._user_toolsets == []
+
+
+def test_websearch_anexa_tool_so_nos_agentes_configurados():
+    """Com websearch ligado, só os agentes em websearch.agentes ganham a tool."""
+    cfg = AppConfig.model_validate({
+        "agents": {
+            "discovery": {"model": "google-gla:gemini-2.0-flash"},
+            "plan": {"model": "anthropic:claude-opus-4-8"},
+            "write": {"model": "anthropic:claude-opus-4-8"},
+            "judge": {"model": "google-gla:gemini-2.0-flash"},
+        },
+        "skill": {"objetivo": "x"},
+        "websearch": {"habilitado": True, "provider": "duckduckgo", "agentes": ["discovery"]},
+    })
+    bundle = build_agents(cfg)  # build é lazy: sem rede
+    assert "duckduckgo_search" in bundle.discovery._function_toolset.tools
+    assert "duckduckgo_search" not in bundle.plan._function_toolset.tools
+    assert "duckduckgo_search" not in bundle.judge._function_toolset.tools
