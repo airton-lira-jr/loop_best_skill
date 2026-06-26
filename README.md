@@ -186,6 +186,13 @@ Diferente de `contexto.links` (que baixa um snapshot estático), o MCP dá aos a
 chamam sozinhos durante a execução**, quando julgam necessário (buscar uma página do Confluence, ler
 um ticket do Jira, etc.).
 
+> **Só leitura (invariante, sempre ligado).** O loopforge **apenas consulta** os serviços externos via
+> MCP — Jira, Confluence, OpenMetadata e quaisquer outros. **Nunca cria, edita ou apaga** nada neles.
+> Toda toolset MCP passa por um filtro **fail-closed** antes de chegar aos agentes: tools de escrita
+> (`create*`, `update*`, `delete*`, `patch*`, ...), de execução, ou de nome ambíguo são **removidas** —
+> o modelo nem as enxerga. A **única** coisa que o sistema escreve é a SKILL gerada, gravada
+> localmente em `skill.output_dir`. Não é configurável.
+
 ### Não precisa configurar — herda da sua sessão do Claude Code
 
 Por padrão (`mcp.auto: true`), o loopforge **descobre sozinho** os servers MCP locais que você já tem
@@ -206,20 +213,27 @@ ele aparece automaticamente para os agentes — sem nada no YAML. Adicione novos
 
 ### Resiliência e escopo
 
-- **Probe:** cada server é testado ao iniciar; os que falham ao conectar (binário ausente, init
-  quebrado — ex.: um server que precisa de um índice que não existe neste projeto) são **descartados
-  com um warning**. Um server quebrado **nunca derruba** o loop.
+- **Probe:** cada server é testado ao iniciar — o loopforge conecta isolado **e lista as tools** (a
+  mesma chamada que os agentes fazem em runtime). Os que falham são **descartados com um warning**:
+  binário ausente, init quebrado (ex.: um server que precisa de um índice que não existe neste
+  projeto), **ou que conectam mas erram ao enumerar as tools** (ex.: um server que depende de um
+  recurso/índice que sumiu). Um server quebrado **nunca derruba** o loop.
 - **Escopo:** por padrão o auto puxa *todos* os servers locais — inclusive dev-tooling irrelevante,
-  que ainda floda modelos fracos com dezenas de tools. Use `incluir`/`excluir` para focar:
+  que ainda floda modelos fracos com dezenas de tools (e pode quebrar o schema de modelos estritos
+  como Gemma/Gemini, gerando `400`). Use `incluir`/`excluir` para focar nos serviços de domínio:
 
 ```yaml
 mcp:
   auto: true                          # (default) herda da sessão; false desliga
-  incluir: ["openmetadata"]           # allowlist (null = todos)
-  excluir: ["tokensave"]              # denylist
+  incluir: ["confluence", "jira"]     # allowlist (null = todos; [] = nenhum)
+  excluir: ["tokensave"]              # denylist (aplicada depois do incluir)
   config_path: "./outro.mcp.json"     # override: aponta um JSON e DESLIGA o auto
   agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
 ```
+
+- **Sem servers, sem drama:** se a allowlist ficar vazia, nenhum server casar/sobreviver ao probe, ou
+  `auto: false`, o loop simplesmente **roda sem tools MCP** — não é erro, os agentes trabalham só com
+  o objetivo + contexto herdado.
 
 Formato do JSON = `mcpServers` (o mesmo do Claude Desktop/Cursor/Claude Code):
 

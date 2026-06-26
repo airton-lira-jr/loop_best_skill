@@ -99,8 +99,9 @@ def aplicar_filtros(
 async def _probe_real(nome: str, defn: dict[str, Any]) -> bool:
     """Tenta conectar a um server MCP isolado; True se subiu, False se falhou.
 
-    Escreve um JSON temporário com só esse server, carrega a toolset e faz
-    enter/exit com timeout. Qualquer erro (binário ausente, init falho, timeout)
+    Escreve um JSON temporário com só esse server, carrega a toolset, faz
+    enter/exit com timeout E lista as tools (mesmo exercício do runtime).
+    Qualquer erro (binário ausente, init falho, timeout, list_tools que erra)
     é tratado como server não-saudável.
 
     Args:
@@ -119,7 +120,14 @@ async def _probe_real(nome: str, defn: dict[str, Any]) -> bool:
         async with asyncio.timeout(_PROBE_TIMEOUT):
             for toolset in load_mcp_toolsets(tmp):
                 async with toolset:
-                    pass
+                    # list_tools é o que o runtime do agente chama; um server que
+                    # conecta mas erra ao enumerar tools precisa ser descartado aqui.
+                    # load_mcp_toolsets devolve wrappers (PrefixedToolset); o
+                    # list_tools fica no MCPToolset interno (campo `wrapped`).
+                    alvo = toolset
+                    while not hasattr(alvo, "list_tools") and hasattr(alvo, "wrapped"):
+                        alvo = alvo.wrapped
+                    await alvo.list_tools()
         return True
     except Exception as exc:  # noqa: BLE001 - server ruim não pode derrubar o loop
         log.warning("mcp_server_ignorado", server=nome, erro=str(exc)[:200])

@@ -28,6 +28,7 @@ contexto:
 
 # MCP: por padrão os agentes JÁ herdam os servers MCP locais da sua sessão do
 # Claude Code (~/.claude.json + .mcp.json), com probe que descarta os quebrados.
-# Não precisa configurar nada. Para escopar/desligar, veja config.full.example.yaml.
+# Não precisa configurar nada. As tools MCP são read-only (a app só consulta
+# serviços externos, nunca escreve). Para escopar/desligar, veja config.full.example.yaml.
 # mcp:
-#   incluir: [openmetadata]   # pegue só os relevantes (evita flood em modelos free)
+#   incluir: ["openmetadata"]   # pegue só os relevantes (evita flood em modelos free)

@@ -10,6 +10,7 @@ from pydantic_ai.toolsets import AbstractToolset
 
 from loopforge.agents.prompts import DISCOVERY_SYS, JUDGE_SYS, PLAN_SYS, WRITE_SYS
 from loopforge.config import AppConfig
+from loopforge.mcp_readonly import filtro_readonly
 from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
 
 
@@ -34,16 +35,21 @@ def _toolsets_para(config: AppConfig, nome: str) -> list[AbstractToolset]:
     agente, sem compartilhar lifecycle). A carga é preguiçosa: não conecta aos
     servers, só monta os objetos — a conexão ocorre quando o agente roda.
 
+    Cada toolset passa pelo guardrail **read-only** (``filtro_readonly``): a
+    aplicação só consulta serviços externos via MCP, nunca escreve/altera neles
+    (ver ``loopforge.mcp_readonly``). O filtro é fail-closed — tools de escrita,
+    execução ou de nome ambíguo nem aparecem para o agente.
+
     Args:
         config: configuração carregada.
         nome: nome do agente (discovery/plan/write/judge).
 
     Returns:
-        Lista de toolsets MCP, ou lista vazia se MCP não está configurado ou o
-        agente não está em ``mcp.agentes``.
+        Lista de toolsets MCP (já filtradas para leitura), ou lista vazia se MCP
+        não está configurado ou o agente não está em ``mcp.agentes``.
     """
     if config.mcp.config_path and nome in config.mcp.agentes:
-        return load_mcp_toolsets(config.mcp.config_path)
+        return [ts.filtered(filtro_readonly) for ts in load_mcp_toolsets(config.mcp.config_path)]
     return []
 
 

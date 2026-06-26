@@ -155,17 +155,29 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
   (null/omitido/arquivo inexistente) ⇒ dimensão `aderencia_best_practices` dropa, renormaliza.
 - **MCP autônomo (opcional, auto por padrão)** — `mcp_discovery.preparar_mcp_config` (async): descobre
   servers MCP **locais** da sessão (`descobrir_mcp_servers`: mescla `~/.claude.json` global+projeto e
-  `.mcp.json`), aplica `incluir`/`excluir`, faz **probe** de cada um (conecta isolado; os que falham são
-  **descartados** — server quebrado nunca derruba o loop), grava JSON temporário (0600) só com saudáveis,
+  `.mcp.json`), aplica `incluir`/`excluir`, faz **probe** de cada um (conecta isolado **e lista as
+  tools** — mesmo exercício do runtime, então um server que conecta mas erra no `list_tools` também é
+  pego; os que falham são **descartados** — server quebrado nunca derruba o loop), grava JSON
+  temporário (0600) só com saudáveis,
   injeta em `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
   `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha conexões
   em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do claude.ai
-  (OAuth) NÃO herdáveis — só servers locais.
+  (OAuth) NÃO herdáveis — só servers locais. `incluir: []`/sem sobreviventes/`auto: false` ⇒ loop
+  roda **sem MCP** (não é erro; agentes usam só objetivo + contexto).
+- **Read-only nos serviços externos (INVARIANTE, sempre ligado)** — a aplicação só **consulta**
+  Jira/Confluence/OpenMetadata e afins via MCP; **nunca cria/edita/apaga** neles. Toda toolset MCP
+  passa por `mcp_readonly.filtro_readonly` (em `builder._toolsets_para`) antes de chegar ao agente:
+  filtro **fail-closed** — tool de escrita, execução ou de nome ambíguo é removida e o LLM nem a vê
+  (classificação por verbo no nome, snake+camelCase, + annotation `readOnlyHint`). Única escrita do
+  sistema = a SKILL gerada, gravada localmente por `gravar_skill`. Não é configurável; não afrouxe.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)
   inspecionável no LangGraph Studio (`langgraph.json` → `graph_app.py:graph`). Checkpointer SQLite em
   `.loopforge/runs/` serve de memory spine + time-travel. Não remova/silencie instrumentação ao refatorar.
+  > **Gotcha:** o grafo roda via `graph.ainvoke` (async), então o checkpointer tem que ser
+  > `AsyncSqliteSaver` (`async with`), **não** o `SqliteSaver` síncrono — esse levanta
+  > `NotImplementedError` no `aget_tuple`. Requer `aiosqlite`.
 - **Agentes nunca chamam API real em teste** — usar `TestModel`/`FunctionModel` do PydanticAI via
   `agent.override(model=...)`.
 

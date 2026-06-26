@@ -85,22 +85,29 @@ contexto:
 #
 #    auto (default true): herda os servers MCP LOCAIS da sua sessão do Claude
 #      Code automaticamente — mescla ~/.claude.json (global + do projeto) e
-#      ./.mcp.json. NÃO precisa configurar nada. Cada server é testado (probe);
-#      os que falharem ao conectar são DESCARTADOS (1 server quebrado nunca
-#      derruba o loop).
-#    incluir: allowlist de nomes de server (null = todos). Use p/ pegar SÓ os
-#      relevantes (ex: [openmetadata]) e evitar puxar dev-tooling irrelevante.
-#    excluir: denylist de nomes de server a ignorar.
+#      ./.mcp.json. NÃO precisa configurar nada. Cada server é testado (probe:
+#      conecta E lista as tools, mesmo exercício do runtime); os que falharem
+#      são DESCARTADOS (1 server quebrado nunca derruba o loop). Se nenhum
+#      sobrar/casar, o loop roda sem tools MCP — sem erro.
+#    incluir: allowlist de nomes de server (null = todos; [] = nenhum). Use p/
+#      pegar SÓ os relevantes (ex: ["openmetadata"]) e evitar puxar dev-tooling
+#      irrelevante, que ainda floda modelos fracos e pode quebrar schema (-> 400).
+#    excluir: denylist de nomes de server a ignorar (aplicada depois do incluir).
 #    config_path: override opcional. Aponta um JSON formato `mcpServers` e
 #      DESLIGA a auto-descoberta. Suporta ${VAR} e ${VAR:-default}.
 #    agentes: quais nós recebem as tools (Judge fora por padrão).
+#
+#    GUARDRAIL read-only (sempre ligado, NÃO-configurável): toda tool MCP passa
+#    por um filtro fail-closed — só tools de CONSULTA chegam aos agentes. A
+#    aplicação nunca cria/edita/apaga em serviços externos; a única escrita é a
+#    SKILL gerada localmente. Ver src/loopforge/mcp_readonly.py.
 #
 #    Limitação: connectors hospedados no claude.ai (OAuth da sessão) NÃO são
 #    herdáveis por um processo separado — só servers locais (stdio/sse/http).
 # -----------------------------------------------------------------------------
 mcp:
   auto: true                        # herda os MCP da sessão do Claude Code
-  incluir: null                     # allowlist: ex ["openmetadata"]; null = todos
+  incluir: null                     # allowlist: ex ["openmetadata"]; null = todos; [] = nenhum
   excluir: []                       # denylist: ex ["tokensave", "token-savior"]
   config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)

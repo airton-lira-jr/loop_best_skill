@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import AsyncExitStack
 from pathlib import Path
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from loopforge.agents.builder import AgentsBundle, build_agents
 from loopforge.config import load_config
@@ -84,7 +84,7 @@ async def run_loop(
     if eh_temp:
         Path(mcp_path).unlink(missing_ok=True)  # toolsets já carregadas; não precisa mais
 
-    with SqliteSaver.from_conn_string(str(runs_dir / "loopforge.sqlite")) as checkpointer:
+    async with AsyncSqliteSaver.from_conn_string(str(runs_dir / "loopforge.sqlite")) as checkpointer:
         graph = build_graph(config, agents=agents, checkpointer=checkpointer)
         bruto = await _rodar_grafo(graph, estado_inicial, agents, usa_mcp)
 
