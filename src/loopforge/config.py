@@ -17,8 +17,16 @@ def _soma_um(valores: list[float], rotulo: str) -> None:
 
 
 class ModelCfg(BaseModel):
-    """LLM provider and model identifier."""
+    """LLM provider and model identifier.
+
+    ``delay_segundos``: pausa (em segundos) ANTES de cada chamada deste agente ao
+    LLM. Serve para espaçar as requisições e não sobrecarregar o provider —
+    complementa o ``ratelimit`` (que é RPM, global e só na camada HTTP dos modelos
+    custom). O delay vale para QUALQUER provider, inclusive os nativos
+    (``anthropic:``/``google-gla:``). Default 0.0 (sem pausa).
+    """
     model: str
+    delay_segundos: float = Field(default=0.0, ge=0.0)
 
 
 class AgentsCfg(BaseModel):
@@ -90,6 +98,24 @@ class ScoringCfg(BaseModel):
     pesos: PesosCfg = Field(default_factory=PesosCfg)
     deterministico: DeterministicoCfg = Field(default_factory=DeterministicoCfg)
     judge: JudgeCfg = Field(default_factory=JudgeCfg)
+
+
+class RateLimitCfg(BaseModel):
+    """Controle de requisições às APIs dos providers de LLM.
+
+    ``requisicoes_por_minuto``: teto de RPM aplicado na camada HTTP e GLOBAL (soma
+    das chamadas dos 4 agentes, incluindo os loops de tool-calling), batendo com o
+    limite por chave do provider. Em especial os modelos ``:free`` do OpenRouter
+    limitam RPM por chave.
+
+    ``max_retries``: quantas vezes o SDK reenvia uma chamada que tomou 429/5xx,
+    respeitando o ``Retry-After`` do provider. Sobe a resiliência a 429
+    transitório (modelo free saturado upstream). NÃO resolve cota diária estourada
+    — nesse caso a chamada falha mesmo depois dos retries.
+    """
+
+    requisicoes_por_minuto: int = Field(default=10, ge=1)
+    max_retries: int = Field(default=6, ge=0)
 
 
 class ContextoCfg(BaseModel):
@@ -168,6 +194,7 @@ class AppConfig(BaseModel):
     contexto: ContextoCfg = Field(default_factory=ContextoCfg)
     mcp: McpCfg = Field(default_factory=McpCfg)
     websearch: WebsearchCfg = Field(default_factory=WebsearchCfg)
+    ratelimit: RateLimitCfg = Field(default_factory=RateLimitCfg)
 
 
 def load_config(path: str | Path) -> AppConfig:

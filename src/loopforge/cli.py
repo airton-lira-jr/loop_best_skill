@@ -5,6 +5,13 @@ from __future__ import annotations
 import asyncio
 
 import typer
+from langgraph.errors import GraphRecursionError
+from openai import APIStatusError
+from pydantic_ai.exceptions import (
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+)
 from rich.console import Console
 
 from loopforge.config import load_config
@@ -30,7 +37,41 @@ def _executar(config: str, doc: list[str] | None, link: list[str] | None, verbos
         verbose: ativa log DEBUG.
     """
     setup_logging(verbose=verbose)
-    final = asyncio.run(run_loop(config, extra_docs=doc, extra_links=link))
+    try:
+        final = asyncio.run(run_loop(config, extra_docs=doc, extra_links=link))
+    except (ModelHTTPError, APIStatusError) as e:
+        # Erro vindo do provider de LLM (ex: 429 do free tier do OpenRouter após
+        # esgotar os retries). Encerra limpo, sem despejar o traceback inteiro.
+        status = getattr(e, "status_code", None)
+        if status == 429:
+            console.print(
+                "[red]Provider de LLM limitou as requisições (HTTP 429).[/red] Mesmo "
+                "com os retries, o limite persistiu — provável cota diária do free tier. "
+                "Opções: aumentar [bold]ratelimit.max_retries[/bold], baixar "
+                "[bold]ratelimit.requisicoes_por_minuto[/bold] e [bold]loop.max_iteracoes[/bold], "
+                "trocar de modelo/provider, ou adicionar créditos no OpenRouter."
+            )
+        else:
+            console.print(f"[red]Erro do provider de LLM (HTTP {status}):[/red] {e}")
+        raise typer.Exit(code=1)
+    except UnexpectedModelBehavior as e:
+        # Algum agente (ex: write/plan) não conseguiu produzir a saída tipada nem
+        # após os retries. O Judge tem fallback próprio; aqui pegamos os demais.
+        console.print(
+            f"[red]Um agente não produziu uma saída válida:[/red] {e}\n"
+            "Dica: use um modelo mais robusto nesse agente (saída tipada/tool-calling), "
+            "ou desligue o web search dele em [bold]websearch.agentes[/bold]."
+        )
+        raise typer.Exit(code=1)
+    except UsageLimitExceeded as e:
+        console.print(f"[red]Limite de uso do agente atingido:[/red] {e}")
+        raise typer.Exit(code=1)
+    except GraphRecursionError as e:
+        console.print(
+            f"[red]O grafo excedeu o limite de passos:[/red] {e}\n"
+            "Baixe [bold]loop.max_iteracoes[/bold] ou verifique a lógica do loop."
+        )
+        raise typer.Exit(code=1)
     cor = "green" if final.status == "aprovado" else "yellow"
     console.print(
         f"[{cor}]Loop encerrado[/{cor}] — status={final.status} "

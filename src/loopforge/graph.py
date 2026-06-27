@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from langgraph.graph import END, START, StateGraph
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UsageLimitExceeded
 
 from loopforge.agents.builder import AgentsBundle, build_agents
 from loopforge.config import AppConfig
@@ -10,7 +13,43 @@ from loopforge.logging import get_logger
 from loopforge.scoring.composite import score_composto
 from loopforge.scoring.deterministic import score_deterministico
 from loopforge.scoring.rubric import score_judge
-from loopforge.state import DiscoveryReport, IteracaoRegistro, LoopState
+from loopforge.state import (
+    DimensaoNota,
+    DiscoveryReport,
+    IteracaoRegistro,
+    JudgeVerdict,
+    LoopState,
+)
+
+
+def _verdict_fallback(motivo: str) -> JudgeVerdict:
+    """Veredito de fallback quando o Judge não consegue produzir saída válida.
+
+    Modelos abertos às vezes falham em montar o ``JudgeVerdict`` aninhado mesmo
+    após os retries (``UnexpectedModelBehavior``). Em vez de derrubar o loop
+    inteiro, devolvemos um veredito com notas zeradas e o motivo no feedback: a
+    iteração conta como reprovada, o loop segue (reitera/para) e a skill escrita
+    até aqui ainda é gravada no fim.
+
+    Args:
+        motivo: descrição curta do erro, para o feedback acionável.
+
+    Returns:
+        ``JudgeVerdict`` com todas as dimensões em 0.0.
+    """
+    zero = DimensaoNota(nota=0.0, rationale=f"Judge falhou: {motivo}")
+    return JudgeVerdict(
+        alinhamento_objetivo=zero,
+        discoverability=zero,
+        concisao_clareza=zero,
+        completude=zero,
+        aderencia_best_practices=zero,
+        feedback_acionavel=(
+            f"O agente Judge não conseguiu avaliar nesta iteração ({motivo}). "
+            "Possíveis causas: modelo instável com saída tipada aninhada ou tool-calling. "
+            "Tente um modelo mais robusto no Judge ou desligue o web search dele."
+        ),
+    )
 
 log = get_logger("graph")
 
@@ -62,6 +101,61 @@ def _ctx_texto(state: LoopState) -> str:
     return "\n".join(partes)
 
 
+def _resumir(texto: str, limite: int = 600) -> str:
+    """Encurta um texto longo para caber no log sem poluir o terminal.
+
+    Args:
+        texto: texto original (prompt ou retorno do agente).
+        limite: tamanho máximo antes de truncar.
+
+    Returns:
+        O texto inteiro se couber, ou truncado com indicação de quantos chars
+        foram cortados.
+    """
+    texto = texto.strip()
+    if len(texto) <= limite:
+        return texto
+    return f"{texto[:limite]}... (+{len(texto) - limite} chars)"
+
+
+async def _executar_agente(
+    agent, nome: str, modelo: str, prompt: str, delay: float, iteracao: int
+):
+    """Roda um agente logando o estágio, o prompt e respeitando o delay configurado.
+
+    Loga o início do estágio (nome do nó/agente que está executando, o modelo LLM
+    dele, iteração, delay e prompt resumido), aplica a pausa ``delay``
+    (anti-sobrecarga do provider, ver ``config.agents.<nome>.delay_segundos``) e
+    então chama o LLM. O resumo do RETORNO fica a cargo de cada nó, que conhece o
+    formato do output.
+
+    Args:
+        agent: agente PydanticAI a executar.
+        nome: nome do nó/agente que está executando (discovery/plan/write/judge).
+        modelo: identificador do LLM daquele agente (``provider:modelo`` do YAML).
+        prompt: prompt completo enviado ao agente.
+        delay: segundos de pausa antes da chamada (>= 0).
+        iteracao: número da iteração atual do loop (para correlacionar os logs).
+
+    Returns:
+        O resultado de ``agent.run(prompt)``.
+    """
+    log.info(
+        "estagio_inicio",
+        estagio=nome,
+        agente=nome,
+        modelo=modelo,
+        iteracao=iteracao,
+        delay_s=delay,
+        prompt=_resumir(prompt),
+    )
+    if delay > 0:
+        await asyncio.sleep(delay)
+    res = await agent.run(prompt)
+    log.info("estagio_fim", estagio=nome, agente=nome, modelo=modelo, iteracao=iteracao)
+    return res
+
+
 def decidir_loop(state: LoopState) -> str:
     """Decide o próximo passo do loop.
 
@@ -107,9 +201,18 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
     async def discovery_node(state: LoopState) -> dict:
         if state.discovery_report is not None:  # roda só na 1ª iteração
             return {}
-        res = await agents.discovery.run(f"{_ctx_texto(state)}\n\nFaça o discovery.")
+        prompt = f"{_ctx_texto(state)}\n\nFaça o discovery."
+        res = await _executar_agente(
+            agents.discovery, "discovery", config.agents.discovery.model, prompt,
+            config.agents.discovery.delay_segundos, state.iteracao + 1,
+        )
         report = res.output
-        log.info("discovery_ok", abordagens=len(report.abordagens), recomendada=report.recomendada)
+        log.info(
+            "discovery_ok",
+            abordagens=len(report.abordagens),
+            recomendada=report.recomendada,
+            resumo=_resumir(report.justificativa, 300),
+        )
         return {"discovery_report": report}
 
     async def plan_node(state: LoopState) -> dict:
@@ -118,23 +221,46 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
             f"FEEDBACK DO JUDGE (iteração anterior):\n{state.judge_feedback or '—'}\n\n"
             "Escolha a melhor abordagem e produza/atualize a spec da skill."
         )
-        res = await agents.plan.run(prompt)
-        log.info("plan_ok", name=res.output.name)
-        return {"plan": res.output}
+        res = await _executar_agente(
+            agents.plan, "plan", config.agents.plan.model, prompt,
+            config.agents.plan.delay_segundos, state.iteracao + 1,
+        )
+        plan = res.output
+        log.info("plan_ok", name=plan.name, resumo=_resumir(plan.description, 300))
+        return {"plan": plan}
 
     async def write_node(state: LoopState) -> dict:
         prompt = f"{_ctx_texto(state)}\n\nPLANO:\n{state.plan.model_dump_json()}\n\nEscreva a skill."
-        res = await agents.write.run(prompt)
-        log.info("write_ok", linhas=res.output.skill_md.count(chr(10)) + 1)
-        return {"artifact": res.output}
+        res = await _executar_agente(
+            agents.write, "write", config.agents.write.model, prompt,
+            config.agents.write.delay_segundos, state.iteracao + 1,
+        )
+        artifact = res.output
+        log.info(
+            "write_ok",
+            linhas=artifact.skill_md.count(chr(10)) + 1,
+            arquivos=len(artifact.arquivos),
+            resumo=_resumir(artifact.skill_md, 300),
+        )
+        return {"artifact": artifact}
 
     async def judge_node(state: LoopState) -> dict:
         prompt = (
             f"{_ctx_texto(state)}\n\nSKILL.md:\n{state.artifact.skill_md}\n\n"
             "Avalie a skill."
         )
-        res = await agents.judge.run(prompt)
-        verdict = res.output
+        try:
+            res = await _executar_agente(
+                agents.judge, "judge", config.agents.judge.model, prompt,
+                config.agents.judge.delay_segundos, state.iteracao + 1,
+            )
+            verdict = res.output
+        except (UnexpectedModelBehavior, UsageLimitExceeded) as e:
+            # Modelo do Judge não conseguiu produzir o veredito tipado mesmo após
+            # os retries. Não derruba o loop: usa fallback (notas 0), a iteração
+            # conta como reprovada e a skill já escrita é gravada no fim.
+            log.warning("judge_falhou", erro=str(e)[:200], iteracao=state.iteracao + 1)
+            verdict = _verdict_fallback(type(e).__name__)
 
         det, _ = score_deterministico(state.artifact, config.scoring.deterministico)
         bp_presente = state.contexto.best_practices_conteudo is not None

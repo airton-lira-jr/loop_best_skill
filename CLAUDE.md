@@ -71,6 +71,7 @@ padrão PydanticAI `provider:modelo`). Veja `config.example.yaml` para versão a
 agents:
   discovery:
     model: google-gla:gemini-2.0-flash    # LLM do agente de Discovery
+    delay_segundos: 0                      # opcional; pausa (s) antes de cada chamada deste agente
   plan:
     model: anthropic:claude-opus-4-8       # LLM do agente de Plan
   write:
@@ -122,6 +123,10 @@ websearch:                  # opcional; tool de busca na web dada aos agentes
   provider: duckduckgo      # duckduckgo (sem API key) | tavily (lê TAVILY_API_KEY)
   agentes: [discovery, plan, write, judge]  # nós que buscam na web
   max_results: 5            # teto por busca (1..20)
+
+ratelimit:                  # opcional; resiliência às APIs dos providers
+  requisicoes_por_minuto: 10  # default 10; teto RPM GLOBAL (camada HTTP), p/ não estourar 429
+  max_retries: 6              # default 6; reenvia em 429/5xx (respeita Retry-After). 0 = sem retry
 ```
 
 > **Anti-viés (default):** `agents.judge.model` deve usar provider **≠** `agents.write.model`,
@@ -129,16 +134,20 @@ websearch:                  # opcional; tool de busca na web dada aos agentes
 > `write`, `judge`.
 
 > **Chaves de API:** NÃO vão no YAML. PydanticAI lê do ambiente
-> (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OPENAI_API_KEY`). `run_loop` carrega `.env`
+> (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
+> O prefixo `nvidia:` (NVIDIA NIM, API gratuita, OpenAI-compatible em `integrate.api.nvidia.com`) não é
+> nativo do PydanticAI: `builder._resolver_modelo` o resolve montando um `OpenAIChatModel` e lê
+> `NVIDIA_API_KEY`. `run_loop` carrega `.env`
 > via `loopforge.env.carregar_env` (override=False; shell vence). São API keys (cobrança por token),
 > não a assinatura Pro/Max.
 
-Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`,
+Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segundos`, opcional, default 0), `skill.objetivo`,
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
 `mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`,
-`websearch.{habilitado,provider,agentes,max_results}`.
+`websearch.{habilitado,provider,agentes,max_results}`,
+`ratelimit.{requisicoes_por_minuto,max_retries}` (defaults 10, 6).
 
 > Validação de pesos estrita: `scoring.pesos`, `scoring.deterministico` (5 checks),
 > `scoring.judge` (5 dimensões) — **cada grupo deve somar 1.0**, senão load levanta `ValidationError`.
@@ -183,6 +192,35 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model`, `skill.objetivo`
   `tools=`. Default: DuckDuckGo (sem key), 4 agentes. **Cuidado em teste:** `TestModel` chama TODA tool
   registrada — então nos testes que rodam agentes via TestModel, ponha `websearch.habilitado: False`
   senão dispara request real à rede. Tavily degrada suave (sem key/sem dep `tavily-python` ⇒ tool omitida).
+- **Rate limit + retries (providers free)** — `ratelimit.requisicoes_por_minuto` (default 10) limita
+  as chamadas às APIs dos providers na **camada HTTP**, não por nó: `ratelimit.criar_cliente_rate_limited`
+  cria um `httpx.AsyncClient` com event hook de request, compartilhado pelos 4 agentes em `build_agents`,
+  então o teto é **global** (soma das chamadas dos nós **+ os loops de tool-calling**, que o controle por
+  nó não veria). `ratelimit.max_retries` (default 6) é passado ao `AsyncOpenAI` (via `_async_openai`) p/
+  reenviar em 429/5xx respeitando o `Retry-After` — sobe a resiliência a 429 **transitório** (modelo free
+  saturado upstream), mas **não** resolve cota diária estourada. Tudo isso só vale pros modelos montados
+  internamente (`openrouter:`/`nvidia:`); os prefixos nativos do PydanticAI (`anthropic:`/`google-gla:`)
+  não recebem o cliente. Sem `OPENROUTER_API_KEY`, `openrouter:` cai de volta na string nativa (sem rate
+  limit/retries custom) — preserva build sem chaves em teste. Na CLI, um 429 que esgota os retries é
+  capturado em `cli._executar` e encerra limpo (sem traceback), com dica de como ajustar.
+- **Delay por agente (anti-sobrecarga)** — `agents.<nome>.delay_segundos` (default 0) é uma pausa
+  (`asyncio.sleep`) aplicada em `graph._executar_agente` ANTES de cada chamada daquele nó ao LLM.
+  Diferente do `ratelimit` (RPM, global, só camada HTTP dos modelos custom), o delay vale p/
+  **qualquer** provider, inclusive os nativos (`anthropic:`/`google-gla:`). Use p/ espaçar as chamadas
+  e não saturar o provider sem mexer no RPM global.
+- **Logs por estágio** — `graph._executar_agente` loga `estagio_inicio` (nó/`agente`, `modelo`,
+  iteração, delay e prompt resumido por `_resumir`, truncado) antes de chamar o LLM e `estagio_fim`
+  depois; cada nó loga seu `*_ok` com um resumo do retorno. Não remova o `estagio_inicio` ao refatorar —
+  é o ponto único de instrumentação de entrada. No fim, `runner.run_loop` emite **`resumo_final`**
+  (status, iterações, score_final, melhor_score, caminho da skill).
+- **Resiliência a saída inválida (loop nunca crasha por isso)** — agentes são montados com `retries=3`
+  (`builder.RETRIES_OUTPUT`): o PydanticAI reenvia ao modelo quando o output não bate o `output_type`
+  (modelos abertos erram JSON aninhado). Se o **Judge** ainda assim estourar `UnexpectedModelBehavior`/
+  `UsageLimitExceeded`, `judge_node` usa `_verdict_fallback` (notas 0 + feedback) em vez de derrubar o
+  grafo — a iteração conta como reprovada, o loop segue/para normalmente e **a skill escrita até então é
+  gravada**. Os demais nós (write/plan/discovery) que falharem propagam e a CLI (`cli._executar`)
+  encerra limpo (sem traceback). `recursion_limit` do grafo é derivado de `loop.max_iteracoes`
+  (em `runner._rodar_grafo`) p/ não estourar o default 25 do LangGraph com `max_iteracoes` alto.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)

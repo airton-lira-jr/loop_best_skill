@@ -8,6 +8,7 @@
 
 # LLM de cada nó. Anti-viés: o Judge usa provider/modelo != do Write.
 # Pode usar OpenRouter (inclui modelos :free): model: openrouter:qwen/qwen3-coder:free
+# Ou NVIDIA NIM (API gratuita, precisa de NVIDIA_API_KEY): model: nvidia:google/gemma-4-31b-it
 agents:
   discovery: {model: google-gla:gemini-2.0-flash}
   plan:      {model: anthropic:claude-opus-4-8}

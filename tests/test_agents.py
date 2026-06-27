@@ -2,9 +2,10 @@
 
 import pytest
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.test import TestModel
 
-from loopforge.agents.builder import build_agents
+from loopforge.agents.builder import _resolver_modelo, build_agents
 from loopforge.config import AppConfig
 from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
 
@@ -20,6 +21,53 @@ CFG = AppConfig.model_validate({
     # busca ligada isso viraria request real à rede e quebraria a hermeticidade.
     "websearch": {"habilitado": False},
 })
+
+
+def test_resolver_modelo_repassa_provider_nativo():
+    """Prefixos nativos do PydanticAI são repassados como string, sem tocar."""
+    assert _resolver_modelo("anthropic:claude-opus-4-8") == "anthropic:claude-opus-4-8"
+    assert _resolver_modelo("openrouter:qwen/qwen3-coder:free") == "openrouter:qwen/qwen3-coder:free"
+
+
+def test_resolver_modelo_nvidia_monta_openai_chat_model(monkeypatch):
+    """Prefixo nvidia: vira OpenAIChatModel apontado p/ o endpoint da NVIDIA NIM."""
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-teste")
+    modelo = _resolver_modelo("nvidia:google/gemma-4-31b-it")
+    assert isinstance(modelo, OpenAIChatModel)
+    assert modelo.model_name == "google/gemma-4-31b-it"
+    assert "integrate.api.nvidia.com" in str(modelo.base_url)
+
+
+def test_resolver_modelo_nvidia_sem_chave_levanta(monkeypatch):
+    """Sem NVIDIA_API_KEY, resolver o prefixo nvidia: falha com mensagem clara."""
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="NVIDIA_API_KEY"):
+        _resolver_modelo("nvidia:google/gemma-4-31b-it")
+
+
+def test_resolver_modelo_openrouter_sem_chave_repassa_string(monkeypatch):
+    """Sem OPENROUTER_API_KEY, openrouter: cai de volta na string (defer nativo)."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert _resolver_modelo("openrouter:qwen/qwen3-coder:free") == "openrouter:qwen/qwen3-coder:free"
+
+
+def test_resolver_modelo_openrouter_com_chave_e_client_monta_modelo(monkeypatch):
+    """Com chave + http_client, openrouter: vira OpenAIChatModel limitado por RPM."""
+    import httpx
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-teste")
+    client = httpx.AsyncClient()
+    modelo = _resolver_modelo("openrouter:google/gemma-4-31b-it:free", client, max_retries=6)
+    assert isinstance(modelo, OpenAIChatModel)
+    assert modelo.model_name == "google/gemma-4-31b-it:free"
+    assert "openrouter.ai" in str(modelo.base_url)
+    # max_retries do config chega no cliente OpenAI subjacente.
+    assert modelo._provider.client.max_retries == 6
+
+
+def test_resolver_modelo_openrouter_com_chave_sem_client_repassa_string(monkeypatch):
+    """Sem http_client, openrouter: ainda cai na string (sem rate limit injetado)."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-teste")
+    assert _resolver_modelo("openrouter:x/y") == "openrouter:x/y"
 
 
 def test_build_agents_cria_os_quatro():

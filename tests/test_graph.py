@@ -79,3 +79,44 @@ async def test_grafo_roda_ate_aprovar_com_testmodel():
         final = await graph.ainvoke(LoopState(objetivo="x", contexto=Contexto(), config=CFG))
     assert final["status"] == "aprovado"
     assert final["score_final"] >= 0.8
+
+
+@pytest.mark.anyio
+async def test_judge_que_falha_nao_derruba_o_grafo(monkeypatch):
+    """Judge que estoura UnexpectedModelBehavior usa fallback e o grafo finaliza.
+
+    Garante o requisito: ao bater um critério de parada (aqui max_iter), a skill
+    escrita até então é preservada e o loop encerra — sem crashar.
+    """
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    cfg = AppConfig.model_validate({
+        "agents": {
+            "discovery": {"model": "google-gla:gemini-2.0-flash"},
+            "plan": {"model": "anthropic:claude-opus-4-8"},
+            "write": {"model": "anthropic:claude-opus-4-8"},
+            "judge": {"model": "google-gla:gemini-2.0-flash"},
+        },
+        "skill": {"objetivo": "x"},
+        "loop": {"max_iteracoes": 1, "score_minimo": 0.8, "no_progress_paciencia": 2},
+        "websearch": {"habilitado": False},
+    })
+    bundle = build_agents(cfg)
+    write_out = {
+        "skill_md": "---\nname: x\ndescription: Use quando testar.\n---\n# X\n",
+        "arquivos": [],
+    }
+
+    async def _raise(*a, **k):
+        raise UnexpectedModelBehavior("saída tipada inválida")
+
+    with bundle.discovery.override(model=TestModel()), \
+         bundle.plan.override(model=TestModel()), \
+         bundle.write.override(model=TestModel(custom_output_args=write_out)):
+        monkeypatch.setattr(bundle.judge, "run", _raise)
+        graph = build_graph(cfg, agents=bundle)
+        final = await graph.ainvoke(LoopState(objetivo="x", contexto=Contexto(), config=cfg))
+
+    assert final["status"] == "max_iter"      # encerrou pelo critério, não crashou
+    assert final["artifact"] is not None      # a skill escrita foi preservada
+    assert final["score_judge"] == 0.0        # veredito de fallback

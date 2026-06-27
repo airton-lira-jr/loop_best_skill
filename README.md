@@ -56,9 +56,15 @@ variável de ambiente, lida pelo PydanticAI. O loopforge **carrega o `.env` auto
 | Provider (no YAML) | Variável | Onde obter |
 |---|---|---|
 | `openrouter:...` (inclui `:free`) | `OPENROUTER_API_KEY` | openrouter.ai/keys |
+| `nvidia:...` (API gratuita) | `NVIDIA_API_KEY` | build.nvidia.com |
 | `anthropic:...` | `ANTHROPIC_API_KEY` | console.anthropic.com |
 | `google-gla:...` | `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) | aistudio.google.com/apikey |
 | `openai:...` | `OPENAI_API_KEY` | platform.openai.com/api-keys |
+
+**NVIDIA NIM (API gratuita).** Formato: `model: nvidia:<id>`, ex. `nvidia:google/gemma-4-31b-it`. O `<id>`
+é o slug do catálogo em build.nvidia.com/models (copie da URL da página do modelo). O endpoint é
+OpenAI-compatible (`integrate.api.nvidia.com`); o loopforge resolve o prefixo `nvidia:` e usa a
+`NVIDIA_API_KEY` (chave `nvapi-...`). Uma só chave serve para todos os agentes.
 
 **OpenRouter (modelos gratuitos).** Formato: `model: openrouter:<id>`, ex. `openrouter:qwen/qwen3-coder:free`
 (o `:free` faz parte do id; veja os ids atuais em openrouter.ai/models). Uma só `OPENROUTER_API_KEY`
@@ -105,6 +111,10 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
 **todos** os campos comentados. Chaves canônicas:
 
 - `agents.{discovery,plan,write,judge}.model` — LLM de cada nó (formato `provider:modelo`).
+- `agents.<nome>.delay_segundos` — **opcional** (default `0`). Pausa em segundos **antes de cada
+  chamada** daquele agente ao LLM, para não sobrecarregar o provider. Vale para **qualquer** provider
+  (inclusive `anthropic:`/`google-gla:`), diferente do `ratelimit` que é RPM e só afeta os modelos
+  custom. Ex.: `delay_segundos: 2` faz o nó esperar 2s antes de chamar.
 - `skill.objetivo` — o alvo do loop. Aceita **texto literal OU um path**: se for um arquivo, lê o
   conteúdo; se for um diretório, concatena os `.md` dentro dele. Use arquivo para objetivos longos
   (evita a dor de quebra de linha no YAML).
@@ -123,6 +133,8 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
 - `websearch.{habilitado,provider,agentes,max_results}` — **opcional**. Por padrão **ligado**
   (DuckDuckGo, sem API key) para os 4 agentes: eles buscam conteúdo atualizado na internet durante o
   loop. Detalhe na seção "Web search" abaixo.
+- `ratelimit.{requisicoes_por_minuto,max_retries}` — **opcional** (defaults **10** e **6**). Teto **global**
+  de RPM (camada HTTP) + retries em 429/5xx. Detalhe na seção "Rate limit" abaixo.
 
 ---
 
@@ -292,6 +304,33 @@ websearch:
 
 ---
 
+## Rate limit (requisições por minuto)
+
+Os providers limitam as requisições por minuto por chave — os modelos `:free` do OpenRouter têm limites
+agressivos, e estourar resulta em `429 Too Many Requests` que derruba o loop. O `ratelimit` espaça as
+chamadas para ficar dentro do teto.
+
+```yaml
+ratelimit:
+  requisicoes_por_minuto: 10   # default 10
+  max_retries: 6               # default 6
+```
+
+- **Global, não por nó.** Um único `.run()` de um agente pode disparar **várias** chamadas HTTP ao
+  provider (o loop de tool-calling). Por isso o limite é aplicado na **camada HTTP**, num `httpx.AsyncClient`
+  compartilhado pelos 4 agentes — o teto vale para a **soma** de todas as chamadas (nós + tool loops).
+- **Retries (`max_retries`).** Quando uma chamada toma `429`/`5xx`, o SDK reenvia até `max_retries` vezes,
+  respeitando o `Retry-After` do provider. Isso aguenta um `429` **transitório** (modelo `:free` saturado
+  upstream). **Não** resolve cota diária estourada — nesse caso a chamada falha mesmo depois dos retries.
+- **Quais modelos.** Vale para os modelos montados internamente (`openrouter:` e `nvidia:`). Os prefixos
+  nativos do PydanticAI (`anthropic:`, `google-gla:`, `openai:`) não recebem o cliente limitado — esses
+  providers pagos não costumam ter limites tão apertados.
+- **Quando ainda toma 429:** abaixe `requisicoes_por_minuto` (ex.: 5 ou 3), reduza `loop.max_iteracoes`,
+  troque de modelo/provider, ou adicione créditos no OpenRouter (free tier tem cota diária por chave). Um
+  `429` que esgota os retries encerra o loop com mensagem clara (sem traceback).
+
+---
+
 ## A métrica de qualidade (pesos e o que significam)
 
 A decisão de **aprovar ou repetir** o loop vem de um **score composto híbrido** entre 0.0 e 1.0:
@@ -377,12 +416,20 @@ Se fosse `0.74`, voltaria pro Plan com o feedback do Judge (até `max_iteracoes`
 | `iteracao ≥ loop.max_iteracoes` | **Para** — grava a skill **parcial** + relatório |
 | score não melhora por `loop.no_progress_paciencia` iterações | **Para** (estagnação) — evita queimar tokens |
 
+Em **qualquer** dos 3 casos a skill é gravada (se houve artefato) e sai um log `resumo_final`
+(status, iterações, score_final, melhor_score, caminho). O loop não é derrubado se o Judge falhar ao
+montar o veredito: ele cai num fallback (notas 0) e o loop encerra normalmente, preservando a skill
+escrita. Agentes usam `retries=3` para o modelo corrigir saídas tipadas inválidas antes de desistir.
+
 ---
 
 ## Observabilidade
 
 - **Logs estruturados** (structlog + rich) — cada transição de nó, score por dimensão e decisão de
-  loop no terminal. Sempre ligado.
+  loop no terminal. Sempre ligado. Antes de cada chamada ao LLM sai um `estagio_inicio` com o nó, a
+  iteração, o `delay` aplicado e o **prompt enviado** (resumido); ao terminar, cada nó loga um `*_ok`
+  com um **resumo do retorno**. No fim sai um `resumo_final` com status, iterações, scores e o caminho
+  da skill gravada.
 - **LangGraph Studio** — `uv run langgraph dev` sobe um servidor in-memory e abre o Studio no browser:
   grafo ao vivo, inspeção de estado e *time-travel* por iteração. O estado é persistido via checkpointer
   SQLite (`.loopforge/runs/`), que também serve de *memory spine* (sobrevive entre runs / permite resume).
