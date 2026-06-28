@@ -36,11 +36,11 @@ agents:
 skill:
   objetivo: "./objetivo"                      # path (.md ou pasta) OU texto direto
   output_dir: "./skills"                      # onde a SKILL final é gravada (SKILL.md + refs)
-  best_practices: null                        # OPCIONAL. SKILL com regras Asaas; injetada em todos
+  best_practices: null                        # OPCIONAL. SKILL com regras de boas práticas; injetada em todos
                                               # os agentes E pontuada pelo Judge. null/omitido =>
                                               # dimensão aderencia_best_practices é dropada e
                                               # os pesos do Judge são renormalizados.
-                                              # ex: "./skills/asaas-base/SKILL.md"
+                                              # ex: "./skills/minha-base/SKILL.md"
 
 # -----------------------------------------------------------------------------
 # 3. Controle do loop (OPCIONAL — defaults abaixo). Saída SEMPRE garantida:

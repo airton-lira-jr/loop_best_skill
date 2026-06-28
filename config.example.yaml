@@ -20,7 +20,7 @@ skill:
   # Para objetivos longos, prefira o arquivo — sem dor de quebra de linha no YAML.
   objetivo: "./objetivo"          # ex: "./objetivo/goal.md"  ou  "Skill que faz X"
   output_dir: "./skills"          # onde a SKILL final é gravada
-  # best_practices: "./skills/asaas-base/SKILL.md"   # opcional (regras Asaas)
+  # best_practices: "./skills/minha-base/SKILL.md"   # opcional (regras de boas práticas). Se definido, a aderência é avaliada pelos agentes
 
 # Fontes de referência (conteúdo é lido/baixado e injetado nos agentes).
 contexto:
@@ -30,7 +30,7 @@ contexto:
 # MCP: por padrão os agentes herdam os servers MCP locais da sua sessão do Claude
 # Code (~/.claude.json + .mcp.json), com probe que descarta os quebrados. Com
 # `dinamico: true` (default), o loop ESCOLHE SOZINHO quais servers usar a partir do
-# contexto: um link p/ asaasdev.atlassian.net (em contexto.links) liga o server de
+# contexto: um link p/ minhaempresa.atlassian.net (em contexto.links) liga o server de
 # Confluence; nada relacionado, nada de MCP. As tools são read-only (a app só
 # consulta, nunca escreve). Para escopar/forçar/desligar, veja config.full.example.yaml.
 # mcp:

@@ -49,7 +49,7 @@ def test_grava_skill_sanitiza_caminhos_inseguros(tmp_path):
     art = SkillArtifact(
         skill_md="---\nname: x\ndescription: Use quando.\n---\n# X\n",
         arquivos=[
-            SkillFile(caminho="https://asaas.example/wiki/AIE04+Design", conteudo="url"),
+            SkillFile(caminho="https://suaempresa.example/wiki/AIE04+Design", conteudo="url"),
             SkillFile(caminho="/etc/evil", conteudo="abs"),
             SkillFile(caminho="../../fora", conteudo="trav"),
             SkillFile(caminho="reference/ok.md", conteudo="ok"),

@@ -176,7 +176,7 @@ def test_selecionar_casa_link_com_server():
         "atlassian": {"command": "uvx", "args": ["mcp-atlassian"], "env": {"CONFLUENCE_URL": "x"}},
         "serena": {"command": "uvx", "args": ["serena-mcp"]},
     }
-    ctx = Contexto(links=["https://asaasdev.atlassian.net/wiki/x"])
+    ctx = Contexto(links=["https://suaempresa.atlassian.net/wiki/x"])
     sel = selecionar_por_contexto(servers, ctx, objetivo="agente para Slack")
     assert set(sel) == {"atlassian"}
 
@@ -196,8 +196,8 @@ def test_selecionar_sem_match_retorna_vazio():
 
     servers = {
         "serena": {"command": "uvx", "args": ["serena-mcp"]},
-        "openmetadata": {"url": "https://catalog.hubble.asaas.com/mcp"},
+        "openmetadata": {"url": "https://catalog.hubble.suaempresa.com/mcp"},
     }
-    ctx = Contexto(links=["https://asaasdev.atlassian.net/wiki/x"])
+    ctx = Contexto(links=["https://suaempresa.atlassian.net/wiki/x"])
     sel = selecionar_por_contexto(servers, ctx, objetivo="agente Slack via Confluence")
     assert sel == {}

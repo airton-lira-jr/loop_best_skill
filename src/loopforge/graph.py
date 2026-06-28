@@ -144,7 +144,7 @@ def _ctx_texto(state: LoopState) -> str:
     for fonte in state.contexto.links_conteudo:
         partes.append(f"--- LINK: {fonte.origem} ---\n{fonte.conteudo}")
     if state.contexto.best_practices_conteudo:
-        partes.append("BEST PRACTICES (Asaas):\n" + state.contexto.best_practices_conteudo)
+        partes.append("BEST PRACTICES:\n" + state.contexto.best_practices_conteudo)
     return "\n".join(partes)
 
 

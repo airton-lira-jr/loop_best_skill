@@ -23,10 +23,10 @@ def test_funde_docs_da_cli_com_yaml():
 
 def test_le_best_practices_quando_existe(tmp_path):
     bp = tmp_path / "SKILL.md"
-    bp.write_text("regras asaas", encoding="utf-8")
+    bp.write_text("regras de boas práticas", encoding="utf-8")
     cfg = AppConfig.model_validate({**BASE, "skill": {"objetivo": "x", "best_practices": str(bp)}})
     ctx = build_contexto(cfg, fetcher=lambda url: None)
-    assert ctx.best_practices_conteudo == "regras asaas"
+    assert ctx.best_practices_conteudo == "regras de boas práticas"
 
 
 def test_best_practices_arquivo_ausente(tmp_path):

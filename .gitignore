@@ -10,3 +10,6 @@ config.yaml
 *.original.md
 objetivo/
 .superpowers/
+*.pckl
+**/*.pckl
+docs/**/*.md

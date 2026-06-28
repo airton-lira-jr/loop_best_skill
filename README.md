@@ -119,7 +119,7 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
   conteúdo; se for um diretório, concatena os `.md` dentro dele. Use arquivo para objetivos longos
   (evita a dor de quebra de linha no YAML).
 - `skill.output_dir` — onde a SKILL final é gravada.
-- `skill.best_practices` — **opcional**. Path para uma SKILL com as regras da Asaas. É **injetada como
+- `skill.best_practices` — **opcional**. Path para uma SKILL com as regras de boas práticas. É **injetada como
   contexto herdado** em todos os agentes **e** pontuada pelo Judge (dimensão `aderencia_best_practices`).
   `null`/omitido (ou arquivo ausente) ⇒ a dimensão é dropada e os pesos do Judge são renormalizados.
 - `loop.*` — **opcional** (defaults: `max_iteracoes=6`, `score_minimo=0.8`, `no_progress_paciencia=2`).
@@ -372,7 +372,7 @@ O agente **Judge** devolve nota `0..1` por dimensão (structured output tipado v
 | `discoverability` | 0.20 | Qualidade da description/triggers — Claude carrega na hora certa? |
 | `concisao_clareza` | 0.15 | Regra+porquê em vez de imperativo; sem redundância |
 | `completude` | 0.20 | Cobre o objetivo de ponta a ponta? |
-| `aderencia_best_practices` | 0.15 | Segue a SKILL `skill.best_practices` da Asaas? |
+| `aderencia_best_practices` | 0.15 | Segue a SKILL `skill.best_practices` de boas práticas? |
 
 ### Exemplo numérico
 

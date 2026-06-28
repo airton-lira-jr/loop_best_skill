@@ -99,11 +99,11 @@ def aplicar_filtros(
 
 
 # Tokens genéricos de infra/org que não discriminam um server de outro: viram ruído
-# se entrarem no matching (ex: "asaas" está em todo host interno). Mantidos curtos.
+# se entrarem no matching (ex: "suaempresa" está em todo host interno). Mantidos curtos.
 _STOP_TOKENS = frozenset({
     "http", "https", "www", "api", "app", "url", "token", "key", "mcp", "uvx",
     "npx", "npm", "node", "python", "docker", "run", "server", "stdio", "sse",
-    "com", "net", "org", "asaas", "dev", "true", "false", "mode", "read", "only",
+    "com", "net", "org", "suaempresa", "dev", "true", "false", "mode", "read", "only",
     "username", "user", "pass", "password", "host", "port", "path", "config",
 })
 

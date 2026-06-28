@@ -82,7 +82,7 @@ agents:
 skill:
   objetivo: "<texto OU path .md/diretório>" # texto literal ou path (arquivo/dir de .md) → lido
   output_dir: "./skills"                  # onde a SKILL final é gravada
-  best_practices: null                    # opcional; path p/ uma SKILL com regras Asaas
+  best_practices: null                    # opcional; path p/ uma SKILL com regras 
 
 loop:
   max_iteracoes: 6          # teto do loop (anti loop-infinito)
