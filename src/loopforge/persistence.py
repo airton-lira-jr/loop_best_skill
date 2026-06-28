@@ -58,6 +58,34 @@ def _slug(nome: str) -> str:
     return s or "skill"
 
 
+def _arquivo_destino(destino: Path, caminho: str) -> Path | None:
+    """Resolve um caminho de arquivo referenciado para DENTRO de ``destino``.
+
+    Sanitiza a entrada do LLM (que às vezes vem como URL, caminho absoluto ou com
+    ``..``): URL vira só o nome final, ``/`` inicial é removido e qualquer
+    resultado que escape do diretório da skill é rejeitado. É a única barreira
+    entre o output do modelo e o sistema de arquivos, então é fail-closed.
+
+    Args:
+        destino: diretório da skill (raiz permitida).
+        caminho: caminho relativo proposto pelo agente Write.
+
+    Returns:
+        ``Path`` seguro dentro de ``destino``, ou ``None`` se inseguro/vazio.
+    """
+    bruto = caminho.strip()
+    if "://" in bruto:  # LLM passou uma URL como caminho — usa só o nome final
+        bruto = bruto.rsplit("/", 1)[-1]
+    bruto = bruto.lstrip("/")
+    if not bruto:
+        return None
+    raiz = destino.resolve()
+    alvo = (raiz / bruto).resolve()
+    if alvo == raiz or raiz not in alvo.parents:  # traversal para fora da skill
+        return None
+    return alvo
+
+
 def gravar_skill(artifact: SkillArtifact, output_dir: str | Path, nome: str) -> Path:
     """Grava SKILL.md e arquivos referenciados em <output_dir>/<slug(nome)>/.
 
@@ -74,7 +102,99 @@ def gravar_skill(artifact: SkillArtifact, output_dir: str | Path, nome: str) -> 
     (destino / "SKILL.md").write_text(artifact.skill_md, encoding="utf-8")
 
     for arq in artifact.arquivos:
-        caminho = destino / arq.caminho
+        caminho = _arquivo_destino(destino, arq.caminho)
+        if caminho is None:  # caminho inseguro (URL/absoluto/traversal) — pula
+            continue
         caminho.parent.mkdir(parents=True, exist_ok=True)
         caminho.write_text(arq.conteudo, encoding="utf-8")
     return destino
+
+
+def _bullets(itens: list[str]) -> str:
+    """Renderiza uma lista como bullets markdown (ou '—' se vazia)."""
+    return "\n".join(f"- {x}" for x in itens) or "—"
+
+
+def gravar_run_md(state: "state_mod.LoopState", destino: Path) -> Path:
+    """Grava um ``RUN.md`` com a trilha de raciocínio do loop ao lado da skill.
+
+    Materializa em disco o que cada agente pesquisou/decidiu/escreveu (Discovery,
+    Plan, Write, Judge) + o histórico de scores. É a versão inspecionável e
+    auditável da trilha que trafega no estado do grafo — cumpre a regra de que cada
+    agente documenta seu trabalho para os seguintes.
+
+    Args:
+        state: estado final do loop (com discovery_report/plan/artifact/verdict).
+        destino: diretório da skill (onde o ``SKILL.md`` foi gravado).
+
+    Returns:
+        Caminho do ``RUN.md`` gravado.
+    """
+    p: list[str] = ["# RUN.md — trilha do LoopForge", ""]
+    p += [
+        f"- **Status:** {state.status}",
+        f"- **Iterações:** {state.iteracao}",
+        f"- **Score final:** {state.score_final:.4f} "
+        f"(determinístico {state.score_det:.4f} / judge {state.score_judge:.4f})",
+        "",
+        "## Objetivo",
+        state.objetivo,
+        "",
+    ]
+
+    d = state.discovery_report
+    p += ["## Discovery (pesquisa)"]
+    if d is None:
+        p += ["—", ""]
+    else:
+        abordagens = "\n".join(
+            f"- **{a.nome}** (adequação {a.adequacao:.2f}): {a.resumo}" for a in d.abordagens
+        ) or "—"
+        p += [
+            "**Achados:**", _bullets(d.achados),
+            "", f"**Fontes:** {', '.join(d.fontes) or '—'}",
+            "", "**Abordagens:**", abordagens,
+            "", f"**Recomendada:** {d.recomendada} — {d.justificativa}", "",
+        ]
+
+    pl = state.plan
+    p += ["## Plan (spec)"]
+    if pl is None:
+        p += ["—", ""]
+    else:
+        p += [
+            f"- **name:** {pl.name}",
+            f"- **description:** {pl.description}",
+            f"- **estrutura:** {pl.estrutura}",
+            f"- **seções:** {', '.join(pl.secoes) or '—'}",
+            f"- **arquivos:** {', '.join(pl.arquivos) or '—'}",
+            "", "**Notas para o Write:**", pl.notas_para_write or "—",
+            "", "**Justificativa:**", pl.justificativa, "",
+        ]
+
+    art = state.artifact
+    p += ["## Write (notas de escrita)", (art.notas_de_escrita or "—") if art else "—", ""]
+
+    v = state.verdict
+    p += ["## Judge (último veredito)"]
+    if v is None:
+        p += ["—", ""]
+    else:
+        for dim in (
+            "alinhamento_objetivo", "discoverability", "concisao_clareza",
+            "completude", "aderencia_best_practices",
+        ):
+            nota = getattr(v, dim)
+            p += [f"- **{dim}:** {nota.nota:.2f} — {nota.rationale}"]
+        p += ["", "**Feedback acionável:**", v.feedback_acionavel, ""]
+
+    if state.historico:
+        p += ["## Histórico de iterações", "", "| iter | score_final | det | judge |",
+              "|------|-------------|-----|-------|"]
+        for r in state.historico:
+            p += [f"| {r.iteracao} | {r.score_final:.4f} | {r.score_det:.4f} | {r.score_judge:.4f} |"]
+        p += [""]
+
+    caminho = destino / "RUN.md"
+    caminho.write_text("\n".join(p), encoding="utf-8")
+    return caminho

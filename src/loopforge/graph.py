@@ -67,15 +67,62 @@ def _discovery_texto(report: DiscoveryReport | None) -> str:
         return "—"
     linhas = []
     for a in report.abordagens:
+        data = f" [{a.data_atualizacao}]" if a.data_atualizacao else ""
         linhas.append(
-            f"- {a.nome} (adequação {a.adequacao:.2f}): {a.resumo}"
+            f"- {a.nome} (adequação {a.adequacao:.2f}){data}: {a.resumo}"
             f" | prós: {', '.join(a.pros) or '—'} | contras: {', '.join(a.contras) or '—'}"
         )
     abordagens = "\n".join(linhas) or "—"
+    achados = "\n".join(f"- {x}" for x in report.achados) or "—"
+    fontes = ", ".join(report.fontes) or "—"
     return (
+        f"ACHADOS DA PESQUISA:\n{achados}\n"
+        f"FONTES: {fontes}\n"
         f"ABORDAGENS:\n{abordagens}\n"
         f"RECOMENDADA: {report.recomendada}\nJUSTIFICATIVA: {report.justificativa}"
     )
+
+
+def _plan_texto(plan) -> str:
+    """Renderiza a spec do Plan (incluindo seções planejadas e notas para o Write).
+
+    Args:
+        plan: ``SkillPlan`` produzido pelo Plan.
+
+    Returns:
+        Texto formatado com name, description, estrutura, seções, arquivos, notas
+        e justificativa — a trilha de decisão que o Write/Judge consomem.
+    """
+    secoes = "\n".join(f"  - {s}" for s in plan.secoes) or "  —"
+    arquivos = ", ".join(plan.arquivos) or "—"
+    return (
+        f"NAME: {plan.name}\nDESCRIPTION: {plan.description}\n"
+        f"ESTRUTURA: {plan.estrutura}\nSEÇÕES PLANEJADAS:\n{secoes}\n"
+        f"ARQUIVOS: {arquivos}\nNOTAS PARA O WRITE: {plan.notas_para_write or '—'}\n"
+        f"JUSTIFICATIVA: {plan.justificativa}"
+    )
+
+
+def _arquivos_texto(artifact, limite: int = 1500) -> str:
+    """Renderiza os arquivos referenciados da skill para o Judge avaliar completude.
+
+    O Judge precisa VER o conteúdo dos arquivos (não só o ``SKILL.md``) para julgar
+    completude e se os links batem. O conteúdo de cada arquivo é truncado para não
+    estourar o contexto de modelos menores.
+
+    Args:
+        artifact: ``SkillArtifact`` escrito pelo Write.
+        limite: máximo de chars por arquivo antes de truncar.
+
+    Returns:
+        Texto com cada arquivo (caminho + conteúdo truncado), ou "—" se não houver.
+    """
+    if not artifact.arquivos:
+        return "—"
+    partes = []
+    for f in artifact.arquivos:
+        partes.append(f"--- ARQUIVO: {f.caminho} ---\n{_resumir(f.conteudo, limite)}")
+    return "\n".join(partes)
 
 
 def _ctx_texto(state: LoopState) -> str:
@@ -210,6 +257,8 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
         log.info(
             "discovery_ok",
             abordagens=len(report.abordagens),
+            achados=len(report.achados),
+            fontes=len(report.fontes),
             recomendada=report.recomendada,
             resumo=_resumir(report.justificativa, 300),
         )
@@ -226,11 +275,31 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
             config.agents.plan.delay_segundos, state.iteracao + 1,
         )
         plan = res.output
-        log.info("plan_ok", name=plan.name, resumo=_resumir(plan.description, 300))
+        log.info(
+            "plan_ok",
+            name=plan.name,
+            secoes=len(plan.secoes),
+            notas=_resumir(plan.notas_para_write, 150),
+            resumo=_resumir(plan.description, 300),
+        )
         return {"plan": plan}
 
     async def write_node(state: LoopState) -> dict:
-        prompt = f"{_ctx_texto(state)}\n\nPLANO:\n{state.plan.model_dump_json()}\n\nEscreva a skill."
+        budget = config.scoring.deterministico.budget_linhas
+        revisao = ""
+        if state.artifact is not None:  # reiteração: revisar, não regenerar do zero
+            revisao = (
+                "\n\nARTEFATO ANTERIOR (revise endereçando o feedback ponto a ponto):\n"
+                f"{state.artifact.skill_md}\n\n"
+                f"FEEDBACK DO JUDGE:\n{state.judge_feedback or '—'}"
+            )
+        prompt = (
+            f"{_ctx_texto(state)}\n\n"
+            f"DISCOVERY:\n{_discovery_texto(state.discovery_report)}\n\n"
+            f"PLANO:\n{_plan_texto(state.plan)}\n\n"
+            f"ORÇAMENTO DE LINHAS do SKILL.md: {budget}.{revisao}\n\n"
+            "Escreva (ou revise) a skill seguindo o contrato do SKILL.md."
+        )
         res = await _executar_agente(
             agents.write, "write", config.agents.write.model, prompt,
             config.agents.write.delay_segundos, state.iteracao + 1,
@@ -240,14 +309,19 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
             "write_ok",
             linhas=artifact.skill_md.count(chr(10)) + 1,
             arquivos=len(artifact.arquivos),
+            notas=_resumir(artifact.notas_de_escrita, 200),
             resumo=_resumir(artifact.skill_md, 300),
         )
         return {"artifact": artifact}
 
     async def judge_node(state: LoopState) -> dict:
         prompt = (
-            f"{_ctx_texto(state)}\n\nSKILL.md:\n{state.artifact.skill_md}\n\n"
-            "Avalie a skill."
+            f"{_ctx_texto(state)}\n\n"
+            f"PLANO:\n{_plan_texto(state.plan)}\n\n"
+            f"SKILL.md:\n{state.artifact.skill_md}\n\n"
+            f"ARQUIVOS REFERENCIADOS:\n{_arquivos_texto(state.artifact)}\n\n"
+            f"NOTAS DO WRITE:\n{state.artifact.notas_de_escrita or '—'}\n\n"
+            "Avalie o conjunto (SKILL.md + arquivos) contra o objetivo e o plano."
         )
         try:
             res = await _executar_agente(

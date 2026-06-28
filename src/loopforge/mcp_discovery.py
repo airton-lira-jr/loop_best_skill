@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic_ai.mcp import load_mcp_toolsets
 
@@ -96,6 +98,83 @@ def aplicar_filtros(
     }
 
 
+# Tokens genéricos de infra/org que não discriminam um server de outro: viram ruído
+# se entrarem no matching (ex: "asaas" está em todo host interno). Mantidos curtos.
+_STOP_TOKENS = frozenset({
+    "http", "https", "www", "api", "app", "url", "token", "key", "mcp", "uvx",
+    "npx", "npm", "node", "python", "docker", "run", "server", "stdio", "sse",
+    "com", "net", "org", "asaas", "dev", "true", "false", "mode", "read", "only",
+    "username", "user", "pass", "password", "host", "port", "path", "config",
+})
+
+
+def _tokenizar(texto: str) -> set[str]:
+    """Quebra texto em tokens minúsculos (>=3 chars), sem os tokens genéricos."""
+    return {
+        t for t in re.split(r"[^a-z0-9]+", texto.lower())
+        if len(t) >= 3 and t not in _STOP_TOKENS
+    }
+
+
+def _tokens_de_servidor(nome: str, defn: dict[str, Any]) -> set[str]:
+    """Assinatura de um server: nome + command + args + host do endpoint + chaves de env.
+
+    São os sinais disponíveis ANTES do probe. As chaves de env ajudam muito (ex:
+    ``CONFLUENCE_URL`` -> token ``confluence``), ligando o server ao domínio.
+    """
+    toks = _tokenizar(nome)
+    toks |= _tokenizar(str(defn.get("command", "")))
+    for a in defn.get("args", []) or []:
+        toks |= _tokenizar(str(a))
+    url = defn.get("url") or defn.get("endpoint") or ""
+    if url:
+        toks |= _tokenizar(urlparse(url).hostname or url)
+    for chave in (defn.get("env") or {}):
+        toks |= _tokenizar(str(chave))
+    return toks
+
+
+def _tokens_de_contexto(contexto: Any, objetivo: str) -> set[str]:
+    """Sinais do contexto: hosts dos links + nomes dos docs + palavras do objetivo."""
+    toks: set[str] = set()
+    for url in getattr(contexto, "links", []) or []:
+        toks |= _tokenizar(urlparse(str(url)).hostname or str(url))
+    for d in getattr(contexto, "docs", []) or []:
+        toks |= _tokenizar(Path(str(d)).name)
+    toks |= _tokenizar(objetivo or "")
+    return toks
+
+
+def selecionar_por_contexto(
+    servers: dict[str, Any], contexto: Any, objetivo: str
+) -> dict[str, Any]:
+    """Seleciona os servers cuja assinatura cruza com os sinais do contexto.
+
+    Determinístico: um server entra se algum token da sua assinatura (nome/command/
+    endpoint/env) aparece nos tokens do contexto (hosts dos links + objetivo + docs).
+    Loga por que cada server entrou ou ficou de fora. Sem match ⇒ dict vazio (o loop
+    roda sem MCP).
+
+    Args:
+        servers: servers candidatos (já passaram por ``excluir``).
+        contexto: objeto com ``links`` e ``docs``.
+        objetivo: texto do objetivo já resolvido.
+
+    Returns:
+        Subconjunto relevante de ``servers``.
+    """
+    ctx_toks = _tokens_de_contexto(contexto, objetivo)
+    selecionados: dict[str, Any] = {}
+    for nome, defn in servers.items():
+        casados = _tokens_de_servidor(nome, defn) & ctx_toks
+        if casados:
+            selecionados[nome] = defn
+            log.info("mcp_selecionado", server=nome, por=sorted(casados))
+        else:
+            log.info("mcp_descartado_contexto", server=nome)
+    return selecionados
+
+
 async def _probe_real(nome: str, defn: dict[str, Any]) -> bool:
     """Tenta conectar a um server MCP isolado; True se subiu, False se falhou.
 
@@ -141,6 +220,8 @@ async def preparar_mcp_config(
     cwd: Path | None = None,
     home: Path | None = None,
     prober: Prober | None = None,
+    contexto: Any | None = None,
+    objetivo: str = "",
 ) -> tuple[str | None, bool]:
     """Resolve o JSON de MCP efetivo (com filtros + probe) para os agentes.
 
@@ -170,6 +251,10 @@ async def preparar_mcp_config(
     servers = aplicar_filtros(
         descobrir_mcp_servers(cwd, home), config.mcp.incluir, config.mcp.excluir
     )
+    # `incluir` explícito é override manual; com `incluir is None` + `dinamico`, escolhe
+    # os servers relevantes pelo contexto (links/objetivo/docs). `excluir` já foi aplicado.
+    if config.mcp.incluir is None and config.mcp.dinamico:
+        servers = selecionar_por_contexto(servers, contexto, objetivo)
     if not servers:
         return None, False
 

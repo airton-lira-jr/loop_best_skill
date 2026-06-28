@@ -141,8 +141,13 @@ class McpCfg(BaseModel):
     auto: bool = True
     config_path: str | None = None
     agentes: list[str] = Field(default_factory=lambda: ["discovery", "plan", "write"])
-    incluir: list[str] | None = None  # allowlist de nomes de server (None = todos)
+    incluir: list[str] | None = None  # allowlist de nomes de server (None = ver `dinamico`)
     excluir: list[str] = Field(default_factory=list)  # denylist de nomes de server
+    # Seleção DINÂMICA por contexto: quando `incluir` é None, escolhe automaticamente
+    # os servers relevantes cruzando hosts dos links + palavras do objetivo/docs com a
+    # assinatura de cada server (nome/command/endpoint). `incluir` explícito é override
+    # manual e ignora isto. dinamico=False + incluir=None ⇒ todos (legado).
+    dinamico: bool = True
 
     @model_validator(mode="after")
     def _checa(self) -> McpCfg:

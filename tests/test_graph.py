@@ -120,3 +120,49 @@ async def test_judge_que_falha_nao_derruba_o_grafo(monkeypatch):
     assert final["status"] == "max_iter"      # encerrou pelo critério, não crashou
     assert final["artifact"] is not None      # a skill escrita foi preservada
     assert final["score_judge"] == 0.0        # veredito de fallback
+
+
+def test_discovery_texto_inclui_achados_e_fontes():
+    """A trilha de pesquisa do Discovery chega ao próximo agente (não evapora)."""
+    from loopforge.graph import _discovery_texto
+    from loopforge.state import Abordagem, DiscoveryReport
+
+    r = DiscoveryReport(
+        achados=["fato verificavel"],
+        fontes=["https://fonte.x"],
+        abordagens=[Abordagem(nome="A", resumo="r", adequacao=0.5, data_atualizacao="2026-06")],
+        recomendada="A",
+        justificativa="j",
+    )
+    txt = _discovery_texto(r)
+    assert "fato verificavel" in txt and "https://fonte.x" in txt and "2026-06" in txt
+
+
+def test_plan_texto_inclui_secoes_e_notas():
+    """As decisões do Plan (seções + notas) chegam ao Write."""
+    from loopforge.graph import _plan_texto
+    from loopforge.state import SkillPlan
+
+    p = SkillPlan(
+        name="x",
+        description="Use quando",
+        estrutura="e",
+        secoes=["Overview", "Quando usar"],
+        notas_para_write="cite a fonte Y",
+        justificativa="j",
+    )
+    txt = _plan_texto(p)
+    assert "Overview" in txt and "cite a fonte Y" in txt
+
+
+def test_arquivos_texto_expoe_conteudo_dos_refs_ao_judge():
+    """O Judge passa a ver o conteúdo dos arquivos referenciados, não só o SKILL.md."""
+    from loopforge.graph import _arquivos_texto
+    from loopforge.state import SkillArtifact, SkillFile
+
+    art = SkillArtifact(
+        skill_md="x",
+        arquivos=[SkillFile(caminho="reference/a.md", conteudo="corpo da referencia")],
+    )
+    txt = _arquivos_texto(art)
+    assert "reference/a.md" in txt and "corpo da referencia" in txt

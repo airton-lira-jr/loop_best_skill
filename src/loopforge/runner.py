@@ -14,7 +14,7 @@ from loopforge.env import carregar_env
 from loopforge.graph import build_graph
 from loopforge.logging import get_logger
 from loopforge.mcp_discovery import preparar_mcp_config
-from loopforge.persistence import criar_serde, gravar_skill
+from loopforge.persistence import criar_serde, gravar_run_md, gravar_skill
 from loopforge.state import Contexto, LoopState
 
 log = get_logger("runner")
@@ -80,8 +80,11 @@ async def run_loop(
     )
 
     # MCP: usa config_path explícito ou auto-descobre os servers do Claude Code
-    # (com filtro incluir/excluir e probe que descarta servers quebrados).
-    mcp_path, eh_temp = await preparar_mcp_config(config)
+    # (filtro incluir/excluir, seleção dinâmica por contexto e probe que descarta
+    # servers quebrados). contexto+objetivo alimentam a seleção dinâmica.
+    mcp_path, eh_temp = await preparar_mcp_config(
+        config, contexto=contexto, objetivo=objetivo
+    )
     if mcp_path:
         config.mcp.config_path = mcp_path
     agents = build_agents(config)  # carrega as toolsets MCP do arquivo resolvido
@@ -100,6 +103,7 @@ async def run_loop(
     if final.artifact is not None:
         nome = final.plan.name if final.plan else "skill"
         destino = gravar_skill(final.artifact, config.skill.output_dir, nome)
+        gravar_run_md(final, destino)  # trilha de raciocínio inspecionável ao lado da skill
 
     # Resumo final único: por que parou, melhor score atingido, e onde a skill foi
     # gravada. `status` é aprovado/max_iter/estagnado (ver decidir_loop). A skill é

@@ -145,7 +145,7 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
-`mcp.auto` (default true), `mcp.config_path` (override opcional), `mcp.agentes`,
+`mcp.auto` (default true), `mcp.dinamico` (default true), `mcp.config_path` (override opcional), `mcp.agentes`,
 `websearch.{habilitado,provider,agentes,max_results}`,
 `ratelimit.{requisicoes_por_minuto,max_retries}` (defaults 10, 6).
 
@@ -159,6 +159,18 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
 
 - **Papéis isolados por LLM** — Discovery, Plan, Write, Judge são agentes PydanticAI separados, cada
   um com modelo configurado via YAML. Evite acoplar lógica entre eles fora do grafo.
+- **Trilha de documentação (handoff)** — cada agente DOCUMENTA seu raciocínio na própria saída tipada
+  p/ o próximo usar como fundamento: Discovery grava `achados`+`fontes` (a pesquisa não evapora); Plan
+  grava `secoes`+`notas_para_write` (decisões p/ o Write); Write grava `notas_de_escrita` (o que fez e
+  por quê). O grafo propaga isso adiante (`_discovery_texto`/`_plan_texto`/`_arquivos_texto` em
+  `graph.py`): Write vê Discovery+Plano+artefato anterior+feedback (na reiteração **revisa**, não
+  regenera); **Judge vê Plano + arquivos referenciados + notas do Write**, não só o `SKILL.md` (antes
+  ele era cego pras refs). Princípio: o avaliador lê o que está no estado, não os arquivos no disco.
+- **Prompts = best practices de skill embutidas** — `prompts.py` codifica as regras de autoria
+  (`SKILL_RULES`): `description` = QUANDO usar (3ª pessoa, "Use quando…", sem resumir o passo a passo),
+  `name` em hífens, corpo conciso, progressive disclosure p/ refs. O `WRITE_SYS` é um **contrato**
+  (formato de receita, não proibição) que casa 1:1 com os checks determinísticos (fences `---`, trigger,
+  orçamento de linhas, refs relativas existentes). Ao mexer num check, ajuste o prompt junto.
 - **Loop com saída garantida** — `decidir_loop` (em `graph.py`) checa **score** (`loop.score_minimo`),
   **teto de iterações** (`loop.max_iteracoes`) **e** estagnação (`loop.no_progress_paciencia`). Sai do
   loop SEMPRE que qualquer um for atingido: `aprovado`, `max_iter` ou `estagnado`.
@@ -178,8 +190,17 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
   injeta em `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
   `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha conexões
   em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do claude.ai
-  (OAuth) NÃO herdáveis — só servers locais. `incluir: []`/sem sobreviventes/`auto: false` ⇒ loop
-  roda **sem MCP** (não é erro; agentes usam só objetivo + contexto).
+  (OAuth) NÃO herdáveis — só servers locais (stdio/sse/http no `mcpServers`). `incluir: []`/sem
+  sobreviventes/`auto: false` ⇒ loop roda **sem MCP** (não é erro; agentes usam só objetivo + contexto).
+- **Seleção DINÂMICA de MCP por contexto (`mcp.dinamico`, default true)** — quando `incluir is None` e
+  `dinamico`, `selecionar_por_contexto` escolhe **automaticamente** os servers relevantes ao objetivo:
+  cruza os tokens do contexto (hosts dos `contexto.links` + palavras do objetivo + nomes dos docs) com a
+  **assinatura** de cada server (nome + command + args + host do endpoint + **chaves de env**, ex.
+  `CONFLUENCE_URL`→`confluence`). Casou ⇒ entra (loga `mcp_selecionado` com os tokens); senão
+  `mcp_descartado_contexto`. É pré-probe e determinístico (sem LLM). Assim, trocar os links do
+  `contexto` muda o MCP usado sem editar `incluir`. `incluir` como lista é **override manual** (ignora o
+  dinâmico); `dinamico: false` + `incluir: None` ⇒ todos (legado). Limite conhecido: server relevante
+  só pelas DESCRIÇÕES das tools (nome/env não batem) não casa pré-probe — force via `incluir`.
 - **Read-only nos serviços externos (INVARIANTE, sempre ligado)** — a aplicação só **consulta**
   Jira/Confluence/OpenMetadata e afins via MCP; **nunca cria/edita/apaga** neles. Toda toolset MCP
   passa por `mcp_readonly.filtro_readonly` (em `builder._toolsets_para`) antes de chegar ao agente:
@@ -223,6 +244,11 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
   (em `runner._rodar_grafo`) p/ não estourar o default 25 do LangGraph com `max_iteracoes` alto.
 - **Contexto incremental via CLI** — links e diretórios de doc passados na CLI (`--doc`/`--link`)
   estendem `contexto.docs`/`contexto.links` do YAML. Trate como entrada, não hardcode.
+- **`RUN.md` (trilha em disco)** — ao gravar a skill, `persistence.gravar_run_md` materializa um
+  `RUN.md` ao lado do `SKILL.md` com a trilha do loop (achados/fontes do Discovery, spec+notas do Plan,
+  notas do Write, último veredito do Judge, histórico de scores). É a versão inspecionável/auditável do
+  que trafega no estado. `gravar_skill` sanitiza o caminho de cada arquivo referenciado
+  (`_arquivo_destino`, fail-closed): URL/absoluto/`..` nunca escrevem fora do diretório da skill.
 - **Observabilidade dupla** — toda execução emite (a) logs estruturados (structlog/rich) e (b)
   inspecionável no LangGraph Studio (`langgraph.json` → `graph_app.py:graph`). Checkpointer SQLite em
   `.loopforge/runs/` serve de memory spine + time-travel. Não remova/silencie instrumentação ao refatorar.

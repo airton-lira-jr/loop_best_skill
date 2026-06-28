@@ -96,10 +96,12 @@ contexto:
 #      conecta E lista as tools, mesmo exercício do runtime); os que falharem
 #      são DESCARTADOS (1 server quebrado nunca derruba o loop). Se nenhum
 #      sobrar/casar, o loop roda sem tools MCP — sem erro.
-#    incluir: allowlist de nomes de server (null = todos; [] = nenhum). Use p/
-#      pegar SÓ os relevantes (ex: ["openmetadata"]) e evitar puxar dev-tooling
-#      irrelevante, que ainda floda modelos fracos e pode quebrar schema (-> 400).
-#    excluir: denylist de nomes de server a ignorar (aplicada depois do incluir).
+#    dinamico: com incluir=null, escolhe SOZINHO os servers relevantes ao contexto
+#      (hosts dos links + objetivo + docs vs. assinatura do server). default true.
+#    incluir: allowlist. null = deixa o `dinamico` decidir; [] = nenhum; lista =
+#      override manual (ignora o dinâmico, ex: ["openmetadata"]). Use override p/
+#      forçar/travar, ou confie no dinâmico p/ não puxar dev-tooling irrelevante.
+#    excluir: denylist de nomes de server a ignorar (aplicada sempre, antes da seleção).
 #    config_path: override opcional. Aponta um JSON formato `mcpServers` e
 #      DESLIGA a auto-descoberta. Suporta ${VAR} e ${VAR:-default}.
 #    agentes: quais nós recebem as tools (Judge fora por padrão).
@@ -114,8 +116,9 @@ contexto:
 # -----------------------------------------------------------------------------
 mcp:
   auto: true                        # herda os MCP da sessão do Claude Code
-  incluir: null                     # allowlist: ex ["openmetadata"]; null = todos; [] = nenhum
-  excluir: []                       # denylist: ex ["tokensave", "token-savior"]
+  dinamico: true                    # com incluir=null, escolhe MCP pelo contexto (links/objetivo/docs)
+  incluir: null                     # null = dinâmico decide; lista = override manual; [] = nenhum
+  excluir: []                       # denylist: ex ["tokensave", "token-savior"] (aplicada sempre)
   config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)
 

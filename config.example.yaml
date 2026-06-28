@@ -27,12 +27,15 @@ contexto:
   docs:  []     # arquivos OU diretórios. ex: ["./docs"]
   links: []     # URLs. ex: ["https://exemplo.com/guia"]
 
-# MCP: por padrão os agentes JÁ herdam os servers MCP locais da sua sessão do
-# Claude Code (~/.claude.json + .mcp.json), com probe que descarta os quebrados.
-# Não precisa configurar nada. As tools MCP são read-only (a app só consulta
-# serviços externos, nunca escreve). Para escopar/desligar, veja config.full.example.yaml.
+# MCP: por padrão os agentes herdam os servers MCP locais da sua sessão do Claude
+# Code (~/.claude.json + .mcp.json), com probe que descarta os quebrados. Com
+# `dinamico: true` (default), o loop ESCOLHE SOZINHO quais servers usar a partir do
+# contexto: um link p/ asaasdev.atlassian.net (em contexto.links) liga o server de
+# Confluence; nada relacionado, nada de MCP. As tools são read-only (a app só
+# consulta, nunca escreve). Para escopar/forçar/desligar, veja config.full.example.yaml.
 # mcp:
-#   incluir: ["openmetadata"]   # pegue só os relevantes (evita flood em modelos free)
+#   dinamico: true              # escolhe MCP pelo contexto (links/objetivo/docs)
+#   incluir: null               # null = dinâmico decide; lista = override manual; [] = nenhum
 
 # Web search: por padrão LIGADO (DuckDuckGo, sem API key) para os 4 agentes —
 # eles buscam conteúdo atualizado na internet durante o loop. Para trocar p/

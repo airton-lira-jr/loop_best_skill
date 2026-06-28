@@ -8,6 +8,7 @@ from loopforge.mcp_discovery import (
     aplicar_filtros,
     descobrir_mcp_servers,
     preparar_mcp_config,
+    selecionar_por_contexto,
 )
 
 BASE = {
@@ -116,7 +117,7 @@ async def test_preparar_descarta_servers_que_falham_no_probe(tmp_path):
         return nome == "bom"  # só "bom" é saudável
 
     path, eh_temp = await preparar_mcp_config(
-        _cfg({"auto": True}), cwd=cwd, home=home, prober=prober
+        _cfg({"auto": True, "dinamico": False}), cwd=cwd, home=home, prober=prober
     )
     try:
         assert eh_temp is True
@@ -156,7 +157,8 @@ async def test_preparar_respeita_excluir(tmp_path):
         return True
 
     path, eh_temp = await preparar_mcp_config(
-        _cfg({"auto": True, "excluir": ["a"]}), cwd=cwd, home=home, prober=prober
+        _cfg({"auto": True, "excluir": ["a"], "dinamico": False}),
+        cwd=cwd, home=home, prober=prober,
     )
     try:
         assert sondados == ["b"]  # "a" filtrado antes do probe
@@ -164,3 +166,38 @@ async def test_preparar_respeita_excluir(tmp_path):
         assert set(conteudo["mcpServers"]) == {"b"}
     finally:
         Path(path).unlink(missing_ok=True)
+
+
+def test_selecionar_casa_link_com_server():
+    """Um link de domínio X seleciona o server cuja assinatura cita X; ignora o resto."""
+    from loopforge.state import Contexto
+
+    servers = {
+        "atlassian": {"command": "uvx", "args": ["mcp-atlassian"], "env": {"CONFLUENCE_URL": "x"}},
+        "serena": {"command": "uvx", "args": ["serena-mcp"]},
+    }
+    ctx = Contexto(links=["https://asaasdev.atlassian.net/wiki/x"])
+    sel = selecionar_por_contexto(servers, ctx, objetivo="agente para Slack")
+    assert set(sel) == {"atlassian"}
+
+
+def test_selecionar_casa_objetivo_com_chave_de_env():
+    """Palavra do objetivo casa com a chave de env do server (ex: Confluence)."""
+    from loopforge.state import Contexto
+
+    servers = {"atlassian": {"command": "uvx", "args": ["mcp-atlassian"], "env": {"CONFLUENCE_URL": "x"}}}
+    sel = selecionar_por_contexto(servers, Contexto(links=[]), objetivo="ler paginas do Confluence")
+    assert set(sel) == {"atlassian"}
+
+
+def test_selecionar_sem_match_retorna_vazio():
+    """Contexto sem relação com nenhum server => seleção vazia (loop roda sem MCP)."""
+    from loopforge.state import Contexto
+
+    servers = {
+        "serena": {"command": "uvx", "args": ["serena-mcp"]},
+        "openmetadata": {"url": "https://catalog.hubble.asaas.com/mcp"},
+    }
+    ctx = Contexto(links=["https://asaasdev.atlassian.net/wiki/x"])
+    sel = selecionar_por_contexto(servers, ctx, objetivo="agente Slack via Confluence")
+    assert sel == {}

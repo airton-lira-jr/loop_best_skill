@@ -190,8 +190,9 @@ Ou seja: para um arquivo de referência **influenciar de verdade** o Discovery/P
 ### 3. Onde a skill final é gravada
 
 No diretório `skill.output_dir` (default `./skills`), dentro de uma subpasta com o nome da skill em
-slug. Ex.: `./skills/pr-review/SKILL.md` + os arquivos referenciados. Os runs (memory spine / SQLite)
-ficam em `.loopforge/runs/` (ignorado pelo git).
+slug. Ex.: `./skills/pr-review/SKILL.md` + os arquivos referenciados. Junto vai um **`RUN.md`** com a
+trilha de raciocínio do loop (o que cada agente pesquisou/decidiu/escreveu + histórico de scores),
+pra inspeção/auditoria. Os runs (memory spine / SQLite) ficam em `.loopforge/runs/` (ignorado pelo git).
 
 ---
 
