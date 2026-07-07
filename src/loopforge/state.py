@@ -108,6 +108,8 @@ class JudgeVerdict(BaseModel):
     completude: DimensaoNota
     aderencia_best_practices: DimensaoNota
     feedback_acionavel: str
+    problemas_bloqueantes: list[str] = Field(default_factory=list)
+    sugestoes: list[str] = Field(default_factory=list)
 
 
 class IteracaoRegistro(BaseModel):

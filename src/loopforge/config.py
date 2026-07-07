@@ -8,6 +8,10 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from loopforge.logging import get_logger
+
+_log = get_logger("config")
+
 
 def _soma_um(valores: list[float], rotulo: str) -> None:
     """Valida que uma lista de pesos soma ~1.0 (tolerância 1e-6)."""
@@ -35,6 +39,22 @@ class AgentsCfg(BaseModel):
     plan: ModelCfg
     write: ModelCfg
     judge: ModelCfg
+
+    @model_validator(mode="after")
+    def _checa_anti_vies(self) -> AgentsCfg:
+        # Anti-viés é central ao design (Judge != Write, ver CLAUDE.md/README) mas só
+        # documentado — isto avisa (não bloqueia) quando o usuário configura os dois
+        # com o mesmo modelo, o que quebra a garantia de avaliação imparcial em silêncio.
+        if self.judge.model == self.write.model:
+            _log.warning(
+                "judge_write_mesmo_modelo",
+                modelo=self.judge.model,
+                aviso=(
+                    "agents.judge.model == agents.write.model quebra o anti-viés "
+                    "central do design (Judge deveria julgar com LLM diferente do Write)."
+                ),
+            )
+        return self
 
 
 class SkillCfg(BaseModel):
@@ -143,6 +163,12 @@ class McpCfg(BaseModel):
     agentes: list[str] = Field(default_factory=lambda: ["discovery", "plan", "write"])
     incluir: list[str] | None = None  # allowlist de nomes de server (None = ver `dinamico`)
     excluir: list[str] = Field(default_factory=list)  # denylist de nomes de server
+    # Default False: Judge fica de fora do MCP por padrão (avalia sem viés de
+    # ferramenta). Ligar dá ao Judge as MESMAS tools MCP (já read-only pelo filtro
+    # fail-closed) só para CONFERIR fatos citados pelo Discovery/Plan (ex: uma
+    # página de Confluence referenciada ainda diz o que o achado alega) — não é
+    # viés de geração, é verificação.
+    judge_verificacao: bool = False
     # Seleção DINÂMICA por contexto: quando `incluir` é None, escolhe automaticamente
     # os servers relevantes cruzando hosts dos links + palavras do objetivo/docs com a
     # assinatura de cada server (nome/command/endpoint). `incluir` explícito é override

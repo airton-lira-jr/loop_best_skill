@@ -121,6 +121,7 @@ mcp:
   excluir: []                       # denylist: ex ["tokensave", "token-savior"] (aplicada sempre)
   config_path: null                 # override: ex "./.mcp.json" (desliga auto)
   agentes: [discovery, plan, write] # quais nós recebem as tools (Judge fora por padrão)
+  judge_verificacao: false          # true = Judge ganha as MESMAS tools (read-only) só p/ conferir fatos
 
 # -----------------------------------------------------------------------------
 # 7. WEB SEARCH (opcional) — tool de busca na internet dada aos agentes p/ puxar

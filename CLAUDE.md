@@ -129,9 +129,10 @@ ratelimit:                  # opcional; resiliência às APIs dos providers
   max_retries: 6              # default 6; reenvia em 429/5xx (respeita Retry-After). 0 = sem retry
 ```
 
-> **Anti-viés (default):** `agents.judge.model` deve usar provider **≠** `agents.write.model`,
+> **Anti-viés (default, validado):** `agents.judge.model` deve usar provider **≠** `agents.write.model`,
 > p/ avaliador não ser cúmplice de quem escreveu. 4 nós do grafo: `discovery`, `plan`,
-> `write`, `judge`.
+> `write`, `judge`. `AgentsCfg._checa_anti_vies` (config.py) emite **warning** estruturado
+> (`judge_write_mesmo_modelo`) se `judge.model == write.model` — não bloqueia o load, só avisa.
 
 > **Chaves de API:** NÃO vão no YAML. PydanticAI lê do ambiente
 > (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
@@ -146,6 +147,7 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
 `loop.no_progress_paciencia`, `scoring.pesos.{deterministico,judge}`,
 `scoring.deterministico.*`, `scoring.judge.*`, `contexto.docs`, `contexto.links`,
 `mcp.auto` (default true), `mcp.dinamico` (default true), `mcp.config_path` (override opcional), `mcp.agentes`,
+`mcp.judge_verificacao` (default false),
 `websearch.{habilitado,provider,agentes,max_results}`,
 `ratelimit.{requisicoes_por_minuto,max_retries}` (defaults 10, 6).
 
@@ -178,6 +180,18 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
   Camada determinística roda checks programáticos sobre `SkillArtifact`; camada judge é rubrica
   do Judge (saída tipada `JudgeVerdict`). Sem `best_practices`, dimensão `aderencia_best_practices`
   dropa, pesos do judge renormalizam.
+- **Judge calibrado (rigor + baixo ruído)** — como `score_judge` pesa 0.70 do score final, o Judge é o
+  maior fator de acurácia do loop. `JUDGE_SYS` (prompts.py) recebe o mesmo `SKILL_RULES` que Plan/Write,
+  exige citar trecho concreto como evidência por dimensão, dá âncoras do que cada faixa de nota
+  significa, e instrui a resistir à tendência de LLM-juiz inflar nota. `JudgeVerdict` (state.py) tem
+  `problemas_bloqueantes`/`sugestoes` (listas) além de `feedback_acionavel` (resumo) — `graph._feedback_texto`
+  renderiza isso como checklist para Plan/Write, em vez de prosa livre a interpretar. Judge e Write
+  rodam com `model_settings=ModelSettings(temperature=...)` baixo (`builder.JUDGE_TEMPERATURE=0.1`,
+  `WRITE_TEMPERATURE=0.3`) — reduz variância de rodada a rodada; Discovery fica na temperatura default
+  do provider (exploração se beneficia de diversidade). Os checks determinísticos também foram
+  endurecidos: `_TRIGGER` (scoring/deterministic.py) ancora "Use quando/Use when" no INÍCIO da
+  description (não em qualquer posição); o parse de frontmatter normaliza CRLF antes de rodar as
+  regexes, pra não zerar `frontmatter_valido`/`markdown_valido` por formatação incidental do provider.
 - **best_practices como contexto herdado (opcional)** — quando `skill.best_practices` aponta p/
   SKILL, conteúdo injeta nos prompts de todos agentes **e** Judge pontua. Ausente
   (null/omitido/arquivo inexistente) ⇒ dimensão `aderencia_best_practices` dropa, renormaliza.
@@ -189,7 +203,9 @@ Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segund
   temporário (0600) só com saudáveis,
   injeta em `mcp.config_path`. `mcp.config_path` explícito é override, desliga auto. Agentes em
   `mcp.agentes` recebem toolsets via `load_mcp_toolsets`, chamam em runtime; runner abre/fecha conexões
-  em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão. Connectors do claude.ai
+  em volta do `ainvoke` (`async with agent`). Judge sem tools por padrão — `mcp.judge_verificacao: true`
+  (default false) dá as MESMAS tools (já read-only) só pro Judge CONFERIR fatos citados pelo
+  Discovery/Plan (não é viés de geração de conteúdo, é verificação). Connectors do claude.ai
   (OAuth) NÃO herdáveis — só servers locais (stdio/sse/http no `mcpServers`). `incluir: []`/sem
   sobreviventes/`auto: false` ⇒ loop roda **sem MCP** (não é erro; agentes usam só objetivo + contexto).
 - **Seleção DINÂMICA de MCP por contexto (`mcp.dinamico`, default true)** — quando `incluir is None` e

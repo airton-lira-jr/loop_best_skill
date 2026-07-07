@@ -49,6 +49,7 @@ def _verdict_fallback(motivo: str) -> JudgeVerdict:
             "Possíveis causas: modelo instável com saída tipada aninhada ou tool-calling. "
             "Tente um modelo mais robusto no Judge ou desligue o web search dele."
         ),
+        problemas_bloqueantes=[f"Judge falhou ao avaliar ({motivo}); nenhuma nota real disponível."],
     )
 
 log = get_logger("graph")
@@ -146,6 +147,29 @@ def _ctx_texto(state: LoopState) -> str:
     if state.contexto.best_practices_conteudo:
         partes.append("BEST PRACTICES:\n" + state.contexto.best_practices_conteudo)
     return "\n".join(partes)
+
+
+def _feedback_texto(verdict: JudgeVerdict) -> str:
+    """Renderiza o veredito do Judge como checklist pro Plan/Write endereçarem.
+
+    Separa bloqueantes de sugestões (em vez de só o `feedback_acionavel` cru)
+    para o próximo nó ter um checklist verificável em vez de prosa a interpretar.
+
+    Args:
+        verdict: veredito estruturado do Judge.
+
+    Returns:
+        Texto formatado com problemas bloqueantes, sugestões e o resumo.
+    """
+    partes = []
+    if verdict.problemas_bloqueantes:
+        itens = "\n".join(f"- {p}" for p in verdict.problemas_bloqueantes)
+        partes.append(f"PROBLEMAS BLOQUEANTES (endereçar TODOS):\n{itens}")
+    if verdict.sugestoes:
+        itens = "\n".join(f"- {s}" for s in verdict.sugestoes)
+        partes.append(f"SUGESTÕES (não bloqueantes):\n{itens}")
+    partes.append(f"RESUMO: {verdict.feedback_acionavel}")
+    return "\n\n".join(partes)
 
 
 def _resumir(texto: str, limite: int = 600) -> str:
@@ -353,7 +377,7 @@ def build_builder(config: AppConfig, agents: AgentsBundle | None = None) -> Stat
             "score_det": det,
             "score_judge": jdg,
             "score_final": final,
-            "judge_feedback": verdict.feedback_acionavel,
+            "judge_feedback": _feedback_texto(verdict),
             "iteracao": iteracao,
             "historico": [*state.historico, registro],
             "status": novo_status,

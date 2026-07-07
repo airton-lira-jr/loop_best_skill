@@ -127,9 +127,10 @@ Dois exemplos: [`config.example.yaml`](./config.example.yaml) é o **mínimo** (
   quiser recalibrar.
 - `contexto.{docs,links}` — fontes de referência (também via flags `--doc`/`--link`). **O conteúdo é
   lido/baixado e injetado nos agentes** — detalhe na seção abaixo.
-- `mcp.{auto,incluir,excluir,config_path,agentes}` — **opcional**. Por padrão (`auto: true`) herda os
-  servers MCP locais da sua sessão do Claude Code (com probe que descarta os quebrados) — nada a
-  configurar. Detalhe na seção "MCP" abaixo.
+- `mcp.{auto,incluir,excluir,config_path,agentes,judge_verificacao}` — **opcional**. Por padrão
+  (`auto: true`) herda os servers MCP locais da sua sessão do Claude Code (com probe que descarta os
+  quebrados) — nada a configurar. `judge_verificacao` (default `false`) dá ao Judge as mesmas tools
+  (read-only) só para conferir fatos. Detalhe na seção "MCP" abaixo.
 - `websearch.{habilitado,provider,agentes,max_results}` — **opcional**. Por padrão **ligado**
   (DuckDuckGo, sem API key) para os 4 agentes: eles buscam conteúdo atualizado na internet durante o
   loop. Detalhe na seção "Web search" abaixo.
@@ -245,6 +246,8 @@ mcp:
   excluir: ["tokensave"]              # denylist (aplicada depois do incluir)
   config_path: "./outro.mcp.json"     # override: aponta um JSON e DESLIGA o auto
   agentes: [discovery, plan, write]   # quais nós ganham as tools (Judge fora por padrão)
+  judge_verificacao: false            # true = Judge ganha as MESMAS tools (read-only) só p/ CONFERIR
+                                       # fatos citados pelo Discovery/Plan (não é viés de geração)
 ```
 
 - **Sem servers, sem drama:** se a allowlist ficar vazia, nenhum server casar/sobreviver ao probe, ou
@@ -268,7 +271,10 @@ Formato do JSON = `mcpServers` (o mesmo do Claude Desktop/Cursor/Claude Code):
 - Cada server vira uma toolset **prefixada pelo nome** (`confluence_*`, `jira_*`) — sem colisão.
 - Variáveis de ambiente no JSON: `${VAR}` (obrigatória) ou `${VAR:-default}`.
 - Os agentes em `mcp.agentes` recebem as tools e **decidem em runtime** quando chamá-las. O **Judge
-  fica de fora por padrão** (avalia a skill sem viés de ferramenta).
+  fica de fora por padrão** (avalia a skill sem viés de ferramenta). Ligue `mcp.judge_verificacao: true`
+  para dar ao Judge as mesmas tools (read-only) só para **conferir** fatos citados pelo Discovery/Plan
+  (ex: uma página de Confluence referenciada ainda diz o que o achado alega) — útil quando o objetivo
+  depende de um contrato externo que o Judge não teria como validar só lendo texto.
 - As conexões MCP são abertas no início do run e fechadas no fim (gerenciadas pelo runner). Na
   auto-descoberta, os servers mesclados vão para um arquivo temporário (0600) que é apagado logo
   após carregar as tools.

@@ -13,6 +13,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.openrouter import OpenRouterProvider
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
 
 from loopforge.agents.prompts import DISCOVERY_SYS, JUDGE_SYS, PLAN_SYS, WRITE_SYS
@@ -36,6 +37,15 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # 3, o modelo recebe o erro de validação e tem mais chances de corrigir antes de
 # levantar UnexpectedModelBehavior.
 RETRIES_OUTPUT = 3
+
+# Temperatura baixa reduz variância do avaliador — sem isso a MESMA skill pode
+# passar numa rodada e reprovar noutra só por ruído de amostragem, já que o score
+# do Judge pesa 70% do score_final (ver scoring/composite.py). O Write também
+# ganha temperatura baixa: deve ser fiel às fontes (achados/spec), não criativo.
+# Discovery fica na temperatura default do provider — exploração se beneficia de
+# diversidade entre chamadas.
+JUDGE_TEMPERATURE = 0.1
+WRITE_TEMPERATURE = 0.3
 
 
 def _async_openai(
@@ -157,9 +167,13 @@ def _toolsets_para(config: AppConfig, nome: str) -> list[AbstractToolset]:
 
     Returns:
         Lista de toolsets MCP (já filtradas para leitura), ou lista vazia se MCP
-        não está configurado ou o agente não está em ``mcp.agentes``.
+        não está configurado ou o agente não está em ``mcp.agentes`` (nem é o Judge
+        com ``mcp.judge_verificacao`` ligado).
     """
-    if config.mcp.config_path and nome in config.mcp.agentes:
+    habilitado = nome in config.mcp.agentes or (
+        nome == "judge" and config.mcp.judge_verificacao
+    )
+    if config.mcp.config_path and habilitado:
         return [ts.filtered(filtro_readonly) for ts in load_mcp_toolsets(config.mcp.config_path)]
     return []
 
@@ -223,6 +237,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             retries=RETRIES_OUTPUT,
             tools=construir_websearch_tools(config, "write"),
             toolsets=_toolsets_para(config, "write"),
+            model_settings=ModelSettings(temperature=WRITE_TEMPERATURE),
             defer_model_check=True,
         ),
         judge=Agent(
@@ -232,6 +247,7 @@ def build_agents(config: AppConfig) -> AgentsBundle:
             retries=RETRIES_OUTPUT,
             tools=construir_websearch_tools(config, "judge"),
             toolsets=_toolsets_para(config, "judge"),
+            model_settings=ModelSettings(temperature=JUDGE_TEMPERATURE),
             defer_model_check=True,
         ),
     )

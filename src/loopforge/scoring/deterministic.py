@@ -10,7 +10,10 @@ from loopforge.config import DeterministicoCfg
 from loopforge.state import SkillArtifact
 
 _FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
-_TRIGGER = re.compile(r"use\s+(when|quando)", re.IGNORECASE)
+# Ancorado no INÍCIO da description: a regra real (SKILL_RULES) exige começar com
+# "Use quando/Use when", não só conter a frase em qualquer posição — um "use when"
+# no meio do texto não ajuda o Claude a descobrir a skill na hora certa.
+_TRIGGER = re.compile(r"^\s*use\s+(when|quando)", re.IGNORECASE)
 _REF_LINK = re.compile(r"\]\(([^)]+\.\w+)\)")
 
 
@@ -38,7 +41,10 @@ def score_deterministico(
     Returns:
         (score 0..1, dict com a contribuição 0..1 de cada check antes do peso).
     """
-    fm = _parse_frontmatter(artifact.skill_md)
+    # Normaliza CRLF antes de qualquer check: um modelo/provider que gera "\r\n" não
+    # pode zerar frontmatter_valido/markdown_valido por formatação incidental.
+    skill_md = artifact.skill_md.replace("\r\n", "\n")
+    fm = _parse_frontmatter(skill_md)
     detalhes: dict[str, float] = {}
 
     detalhes["frontmatter_valido"] = 1.0 if fm and "name" in fm and "description" in fm else 0.0
@@ -46,13 +52,13 @@ def score_deterministico(
     descricao = str(fm.get("description", "")) if fm else ""
     detalhes["description_tem_trigger"] = 1.0 if _TRIGGER.search(descricao) else 0.0
 
-    linhas = artifact.skill_md.count("\n") + 1
+    linhas = skill_md.count("\n") + 1
     if linhas <= cfg.budget_linhas:
         detalhes["dentro_budget"] = 1.0
     else:
         detalhes["dentro_budget"] = max(0.0, 1 - (linhas - cfg.budget_linhas) / cfg.budget_linhas)
 
-    referenciados = set(_REF_LINK.findall(artifact.skill_md))
+    referenciados = set(_REF_LINK.findall(skill_md))
     # Filtrar URLs externas (começam com http:// ou https://)
     referenciados = {r for r in referenciados if not r.startswith(("http://", "https://"))}
     if not referenciados:
@@ -62,7 +68,7 @@ def score_deterministico(
         existentes = sum(1 for r in referenciados if r in presentes)
         detalhes["refs_existem"] = existentes / len(referenciados)
 
-    tem_heading = bool(re.search(r"^#\s", artifact.skill_md, re.MULTILINE))
+    tem_heading = bool(re.search(r"^#\s", skill_md, re.MULTILINE))
     detalhes["markdown_valido"] = 1.0 if (fm is not None and tem_heading) else 0.0
 
     score = (
