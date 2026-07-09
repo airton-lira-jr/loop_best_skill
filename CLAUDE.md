@@ -136,11 +136,17 @@ ratelimit:                  # opcional; resiliência às APIs dos providers
 
 > **Chaves de API:** NÃO vão no YAML. PydanticAI lê do ambiente
 > (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
-> O prefixo `nvidia:` (NVIDIA NIM, API gratuita, OpenAI-compatible em `integrate.api.nvidia.com`) não é
-> nativo do PydanticAI: `builder._resolver_modelo` o resolve montando um `OpenAIChatModel` e lê
-> `NVIDIA_API_KEY`. `run_loop` carrega `.env`
+> Dois prefixos NÃO são nativos do PydanticAI e `builder._resolver_modelo` os monta na mão como
+> `OpenAIChatModel` (endpoint OpenAI-compatible): `nvidia:` (NVIDIA NIM, API gratuita em
+> `build.nvidia.com`, lê `NVIDIA_API_KEY`) e `litellm:` (LiteLLM Proxy self-hosted, sem endpoint
+> fixo, lê `LITELLM_BASE_URL` obrigatória + `LITELLM_API_KEY` opcional — proxy sem `master_key` não
+> exige chave). `_precisa_cliente_rate_limited` decide se monta o `http_client` compartilhado (RPM +
+> retries) olhando esses mesmos prefixos. `run_loop` carrega `.env`
 > via `loopforge.env.carregar_env` (override=False; shell vence). São API keys (cobrança por token),
-> não a assinatura Pro/Max.
+> não a assinatura Pro/Max — **por design, o loopforge não suporta autenticar via login/OAuth do
+> Claude Code/claude.ai** (`CLAUDE_CODE_OAUTH_TOKEN` ou similar): usar credenciais de assinatura em
+> ferramenta de terceiros viola os Termos de Serviço da Anthropic e está bloqueado no servidor deles
+> desde abr/2026 (ver [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)).
 
 Chaves canônicas: `agents.{discovery,plan,write,judge}.model` (+ `.delay_segundos`, opcional, default 0), `skill.objetivo`,
 `skill.output_dir`, `skill.best_practices` (opcional), `loop.max_iteracoes`, `loop.score_minimo`,

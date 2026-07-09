@@ -9,9 +9,15 @@
 # -----------------------------------------------------------------------------
 # 1. LLM de cada agente (um por nó do grafo).
 #    Princípio anti-viés: o Judge usa um provider/modelo DIFERENTE do Write.
-#    Providers: anthropic:, google-gla:, openai:, openrouter: (inclui :free) e
-#    nvidia: (NVIDIA NIM, API gratuita — precisa de NVIDIA_API_KEY, chave nvapi-...).
+#    Providers: anthropic:, google-gla:, openai:, openrouter: (inclui :free),
+#    nvidia: (NVIDIA NIM, API gratuita — precisa de NVIDIA_API_KEY, chave nvapi-...)
+#    e litellm: (seu LiteLLM Proxy self-hosted — precisa de LITELLM_BASE_URL;
+#    LITELLM_API_KEY é opcional se o proxy não tiver master_key).
 #    Ex. NVIDIA: model: nvidia:google/gemma-4-31b-it  (slug do build.nvidia.com/models)
+#    Ex. LiteLLM: model: litellm:gpt-4o  (o nome é o "model name" do seu proxy)
+#    IMPORTANTE: anthropic: usa sua API key (cobrança por token), NÃO a assinatura
+#    Pro/Max — usar o login/OAuth do Claude Code fora dele viola os Termos de
+#    Serviço da Anthropic e está bloqueado no servidor deles desde abr/2026.
 # -----------------------------------------------------------------------------
 agents:
   discovery:

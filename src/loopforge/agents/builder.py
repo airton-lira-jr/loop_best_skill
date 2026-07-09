@@ -31,6 +31,12 @@ NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 OPENROUTER_PREFIXO = "openrouter:"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
+# LiteLLM Proxy (self-hosted, https://www.litellm.ai/) também é OpenAI-compatible,
+# mas sem endpoint fixo — cada usuário hospeda o seu. A URL vem de LITELLM_BASE_URL
+# (ex: http://localhost:4000) e a chave (opcional; proxies sem master_key não
+# exigem) de LITELLM_API_KEY.
+LITELLM_PREFIXO = "litellm:"
+
 # Quantas vezes o PydanticAI reenvia ao modelo quando a SAÍDA não bate o schema
 # tipado (output_type). O default do framework é 1 — baixo para modelos abertos
 # (Llama/NVIDIA) que erram o JSON de structures aninhadas (ex: JudgeVerdict). Com
@@ -80,6 +86,10 @@ def _resolver_modelo(
       limit nem os retries custom) — preserva a construção sem chaves (ex: em teste).
     - ``nvidia:`` — NVIDIA NIM (``build.nvidia.com``), endpoint OpenAI-compatible,
       lendo ``NVIDIA_API_KEY``. Ex.: ``nvidia:google/gemma-4-31b-it``.
+    - ``litellm:`` — LiteLLM Proxy (self-hosted, sem endpoint fixo), lendo
+      ``LITELLM_BASE_URL`` (obrigatória) e ``LITELLM_API_KEY`` (opcional). Ex.:
+      ``litellm:gpt-4o`` (o nome após o prefixo é o ``model name`` configurado no
+      seu proxy, não o modelo real do provider upstream).
 
     Args:
         model: identificador do modelo no formato ``provider:modelo`` do YAML.
@@ -105,6 +115,21 @@ def _resolver_modelo(
             return OpenAIChatModel(nome, provider=OpenRouterProvider(openai_client=client))
         return model
 
+    if model.startswith(LITELLM_PREFIXO):
+        nome = model[len(LITELLM_PREFIXO):]
+        base_url = os.getenv("LITELLM_BASE_URL")
+        if not base_url:
+            raise ValueError(
+                f"modelo '{model}' usa LiteLLM mas LITELLM_BASE_URL não está no "
+                "ambiente. Defina a URL do seu LiteLLM Proxy (ex: "
+                "http://localhost:4000) em LITELLM_BASE_URL."
+            )
+        # LITELLM_API_KEY é opcional: proxy self-hosted sem master_key configurado
+        # não exige auth, mas o SDK da OpenAI exige uma string não-vazia.
+        api_key = os.getenv("LITELLM_API_KEY") or "sk-litellm-local"
+        client = _async_openai(base_url, api_key, http_client, max_retries)
+        return OpenAIChatModel(nome, provider=OpenAIProvider(openai_client=client))
+
     if model.startswith(NVIDIA_PREFIXO):
         nome = model[len(NVIDIA_PREFIXO):]
         api_key = os.getenv("NVIDIA_API_KEY")
@@ -123,12 +148,13 @@ def _resolver_modelo(
 def _precisa_cliente_rate_limited(modelos: list[str]) -> bool:
     """Diz se algum modelo será montado aqui e, portanto, usaria o http_client.
 
-    Espelha exatamente as condições de ``_resolver_modelo``: ``nvidia:`` sempre é
-    montado aqui; ``openrouter:`` só quando há ``OPENROUTER_API_KEY``. Evita criar
-    um cliente que ficaria sem uso (ex: configs 100% ``anthropic:`` em teste).
+    Espelha exatamente as condições de ``_resolver_modelo``: ``nvidia:`` e
+    ``litellm:`` sempre são montados aqui; ``openrouter:`` só quando há
+    ``OPENROUTER_API_KEY``. Evita criar um cliente que ficaria sem uso (ex:
+    configs 100% ``anthropic:`` em teste).
     """
     for m in modelos:
-        if m.startswith(NVIDIA_PREFIXO):
+        if m.startswith(NVIDIA_PREFIXO) or m.startswith(LITELLM_PREFIXO):
             return True
         if m.startswith(OPENROUTER_PREFIXO) and os.getenv("OPENROUTER_API_KEY"):
             return True

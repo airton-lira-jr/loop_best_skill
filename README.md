@@ -60,6 +60,7 @@ variável de ambiente, lida pelo PydanticAI. O loopforge **carrega o `.env` auto
 | `anthropic:...` | `ANTHROPIC_API_KEY` | console.anthropic.com |
 | `google-gla:...` | `GEMINI_API_KEY` (ou `GOOGLE_API_KEY`) | aistudio.google.com/apikey |
 | `openai:...` | `OPENAI_API_KEY` | platform.openai.com/api-keys |
+| `litellm:...` | `LITELLM_BASE_URL` (+ `LITELLM_API_KEY` opcional) | seu LiteLLM Proxy self-hosted |
 
 **NVIDIA NIM (API gratuita).** Formato: `model: nvidia:<id>`, ex. `nvidia:google/gemma-4-31b-it`. O `<id>`
 é o slug do catálogo em build.nvidia.com/models (copie da URL da página do modelo). O endpoint é
@@ -75,9 +76,24 @@ serve para todos os agentes. Dois cuidados com modelos `:free`:
   pode esbarrar. Reduza `loop.max_iteracoes` se necessário.
 
 > Estas são **API keys** (cobrança por token), **não** a assinatura Pro/Max do claude.ai/Claude Code —
-> a assinatura não dá acesso à API. São billings separados.
+> a assinatura não dá acesso à API. São billings separados. Usar o login/OAuth do Claude Code fora
+> dele (ex: injetar `CLAUDE_CODE_OAUTH_TOKEN` aqui) **viola os Termos de Serviço da Anthropic** e,
+> desde abr/2026, está **bloqueado no servidor deles** para ferramentas de terceiros — por isso o
+> loopforge não oferece essa opção. Use sempre `ANTHROPIC_API_KEY`.
 
 Alternativa ao `.env`: exportar no shell (`export ANTHROPIC_API_KEY=...`).
+
+**LiteLLM Proxy (auto-hospedado)** — se você já roda um [LiteLLM](https://www.litellm.ai/) Proxy
+(`litellm --config seu-config.yaml`) unificando vários providers atrás de um único endpoint
+OpenAI-compatible, use o prefixo `litellm:<model_name>`, onde `<model_name>` é o nome configurado
+no `model_list` do seu proxy (não o modelo real do provider upstream). Duas env vars:
+
+| Env var | Obrigatória? | Descrição |
+|---|---|---|
+| `LITELLM_BASE_URL` | sim | URL do seu proxy, ex. `http://localhost:4000` |
+| `LITELLM_API_KEY` | não | virtual key do proxy; omita se ele não tiver `master_key` |
+
+Ex.: `model: litellm:gpt-4o` com `LITELLM_BASE_URL=http://localhost:4000`.
 
 ## Uso
 
@@ -329,9 +345,9 @@ ratelimit:
 - **Retries (`max_retries`).** Quando uma chamada toma `429`/`5xx`, o SDK reenvia até `max_retries` vezes,
   respeitando o `Retry-After` do provider. Isso aguenta um `429` **transitório** (modelo `:free` saturado
   upstream). **Não** resolve cota diária estourada — nesse caso a chamada falha mesmo depois dos retries.
-- **Quais modelos.** Vale para os modelos montados internamente (`openrouter:` e `nvidia:`). Os prefixos
-  nativos do PydanticAI (`anthropic:`, `google-gla:`, `openai:`) não recebem o cliente limitado — esses
-  providers pagos não costumam ter limites tão apertados.
+- **Quais modelos.** Vale para os modelos montados internamente (`openrouter:`, `nvidia:` e `litellm:`).
+  Os prefixos nativos do PydanticAI (`anthropic:`, `google-gla:`, `openai:`) não recebem o cliente
+  limitado — esses providers pagos não costumam ter limites tão apertados.
 - **Quando ainda toma 429:** abaixe `requisicoes_por_minuto` (ex.: 5 ou 3), reduza `loop.max_iteracoes`,
   troque de modelo/provider, ou adicione créditos no OpenRouter (free tier tem cota diária por chave). Um
   `429` que esgota os retries encerra o loop com mensagem clara (sem traceback).

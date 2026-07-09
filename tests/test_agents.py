@@ -5,7 +5,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.test import TestModel
 
-from loopforge.agents.builder import _resolver_modelo, build_agents
+from loopforge.agents.builder import _precisa_cliente_rate_limited, _resolver_modelo, build_agents
 from loopforge.config import AppConfig
 from loopforge.state import DiscoveryReport, JudgeVerdict, SkillArtifact, SkillPlan
 
@@ -68,6 +68,37 @@ def test_resolver_modelo_openrouter_com_chave_sem_client_repassa_string(monkeypa
     """Sem http_client, openrouter: ainda cai na string (sem rate limit injetado)."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-teste")
     assert _resolver_modelo("openrouter:x/y") == "openrouter:x/y"
+
+
+def test_resolver_modelo_litellm_sem_base_url_levanta(monkeypatch):
+    """Sem LITELLM_BASE_URL, resolver o prefixo litellm: falha com mensagem clara."""
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    with pytest.raises(ValueError, match="LITELLM_BASE_URL"):
+        _resolver_modelo("litellm:gpt-4o")
+
+
+def test_resolver_modelo_litellm_monta_openai_chat_model(monkeypatch):
+    """Prefixo litellm: vira OpenAIChatModel apontado p/ o proxy configurado."""
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-litellm-teste")
+    modelo = _resolver_modelo("litellm:gpt-4o")
+    assert isinstance(modelo, OpenAIChatModel)
+    assert modelo.model_name == "gpt-4o"
+    assert "localhost:4000" in str(modelo.base_url)
+
+
+def test_resolver_modelo_litellm_sem_chave_usa_dummy(monkeypatch):
+    """LITELLM_API_KEY é opcional: proxy sem master_key ainda monta o modelo."""
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    modelo = _resolver_modelo("litellm:claude-da-equipe")
+    assert isinstance(modelo, OpenAIChatModel)
+    assert modelo.model_name == "claude-da-equipe"
+
+
+def test_precisa_cliente_rate_limited_litellm_sempre_true():
+    """litellm: sempre precisa do http_client, independente de API key."""
+    assert _precisa_cliente_rate_limited(["litellm:gpt-4o"]) is True
 
 
 def test_build_agents_cria_os_quatro():
